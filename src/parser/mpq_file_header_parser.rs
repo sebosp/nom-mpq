@@ -1,73 +1,10 @@
-//! Nom Parsing the MPQ file
-//! NOTES:
-//! - All numbers in the MoPaQ format are in little endian byte order
-//! - Signed numbers use the two's complement system.
-//! - Structure members are listed in the following general form: offset from the beginning of the structure: data type(array size) member name : member description
+//! Nom Parsing The MPQ File Header
 
-use super::{MPQFileHeader, MPQFileHeaderExt, MPQUserData};
-use nom::bytes::complete::{tag, take};
-use nom::error::dbg_dmp;
+use super::LITTLE_ENDIAN;
+use crate::MPQParserError;
+use crate::{MPQFileHeader, MPQFileHeaderExt};
 use nom::number::complete::{i16, i64, u16, u32};
 use nom::*;
-use std::convert::From;
-
-fn get_magic(input: &[u8]) -> IResult<&[u8], &[u8]> {
-    dbg_dmp(tag(b"MPQ"), "tag")(input)
-}
-
-pub const MPQ_USER_DATA_TYPE: u8 = 0x1b;
-pub const LITTLE_ENDIAN: nom::number::Endianness = nom::number::Endianness::Little;
-
-#[derive(Debug, PartialEq)]
-pub struct MPQUserDataBuilder {
-    size: Option<u32>,
-    archive_header_offset: Option<u32>,
-    user_data: Vec<u8>,
-}
-
-impl MPQUserDataBuilder {
-    pub fn new() -> Self {
-        Self {
-            size: None,
-            archive_header_offset: None,
-            user_data: vec![],
-        }
-    }
-
-    pub fn with_size(mut self, size: u32) -> Self {
-        self.size = Some(size);
-        self
-    }
-
-    pub fn with_archive_header_offset(mut self, archive_header_offset: u32) -> Self {
-        self.archive_header_offset = Some(archive_header_offset);
-        self
-    }
-
-    pub fn with_user_data(mut self, user_data: &[u8]) -> Self {
-        self.user_data = user_data.to_vec();
-        self
-    }
-
-    pub fn build(self) -> Result<MPQUserData, String> {
-        let size = if let Some(size) = self.size {
-            size
-        } else {
-            return Err("Missing size".to_string());
-        };
-        let archive_header_offset = if let Some(archive_header_offset) = self.archive_header_offset
-        {
-            archive_header_offset
-        } else {
-            return Err("Missing archive_header_offset".to_string());
-        };
-        Ok(MPQUserData {
-            size,
-            archive_header_offset,
-            user_data: self.user_data,
-        })
-    }
-}
 
 /// Extended fields only present in the Burning Crusade format and later:
 #[derive(Debug, PartialEq, Default)]
@@ -83,7 +20,7 @@ impl MPQFileHeaderExtParser {
     }
 
     /// Parses the whole section in the order of the archive.
-    pub fn parse(mut self, input: &[u8]) -> IResult<&[u8], Self> {
+    pub fn parse(self, input: &[u8]) -> IResult<&[u8], Self> {
         let res = self;
         let (input, res) = res.parse_extended_block_table_offset(input)?;
         let (input, res) = res.parse_hash_table_offset_high(input)?;
@@ -152,7 +89,7 @@ impl MPQFileHeaderParser {
     }
 
     /// Parses the whole section of the File Header
-    pub fn parse(mut self, input: &[u8]) -> IResult<&[u8], Self> {
+    pub fn parse(self, input: &[u8]) -> IResult<&[u8], Self> {
         let res = self;
         let (input, res) = res.parse_header_size(input)?;
         let (input, res) = res.parse_archive_size(input)?;
@@ -304,119 +241,4 @@ impl MPQFileHeaderParser {
             extended_file_header,
         })
     }
-}
-
-#[derive(Debug, PartialEq)]
-pub enum MPQSectionType {
-    UserData(MPQUserDataBuilder),
-    Header(MPQFileHeaderParser),
-    Unknown,
-}
-
-impl MPQSectionType {
-    pub fn build_user_data(self) -> Result<MPQUserData, String> {
-        if let Self::UserData(user_data) = self {
-            user_data.build()
-        } else {
-            Err("Wrong section type".to_string())
-        }
-    }
-
-    pub fn build_archive_header(self) -> Result<MPQFileHeader, String> {
-        if let Self::Header(archive_header) = self {
-            archive_header.build()
-        } else {
-            Err("Wrong section type".to_string())
-        }
-    }
-}
-
-impl From<&[u8]> for MPQSectionType {
-    fn from(input: &[u8]) -> Self {
-        if input.len() != 1 {
-            Self::Unknown
-        } else {
-            match input[0] {
-                0x1a => Self::Header(MPQFileHeaderParser::new()),
-                0x1b => Self::UserData(MPQUserDataBuilder::new()),
-                _ => Self::Unknown,
-            }
-        }
-    }
-}
-
-/// Gets the header from the MPQ file
-pub fn get_mpq_type(input: &[u8]) -> IResult<&[u8], MPQSectionType> {
-    let (input, _) = get_magic(input)?;
-    let (input, mpq_type) = take(1usize)(input)?;
-    let is_user_data = mpq_type == &[MPQ_USER_DATA_TYPE];
-    Ok((input, MPQSectionType::from(mpq_type)))
-}
-
-pub fn read_mpq_header(input: &[u8]) -> IResult<&[u8], MPQSectionType> {
-    let (input, header) = MPQFileHeaderParser::new().parse(input)?;
-    Ok((input, MPQSectionType::Header(header)))
-}
-
-/// The MPQ section headers contain the sizes in the headers
-pub fn read_section_data(input: &[u8], mpq_type: MPQSectionType) -> IResult<&[u8], MPQSectionType> {
-    match mpq_type {
-        MPQSectionType::UserData(user_data_builder) => {
-            let (input, user_data_size) = u32(LITTLE_ENDIAN)(input)?;
-            let (input, archive_header_offset) = u32(LITTLE_ENDIAN)(input)?;
-            // Thus far we have read 12 bytes:
-            // - The magic (4 bytes)
-            // - The user data size (4 bytes)
-            // - The archive header offset (4 bytes)
-            if archive_header_offset <= 12 {
-                panic!("Archive Header Offset should be more than 12 bytes");
-            }
-            let (input, user_data) = take(archive_header_offset as usize - 12usize)(input)?;
-            println!("read_section_data user_data_size: {user_data_size}, archive_header_offset: {archive_header_offset}");
-            Ok((
-                input,
-                MPQSectionType::UserData(
-                    user_data_builder
-                        .with_size(user_data_size)
-                        .with_archive_header_offset(archive_header_offset)
-                        .with_user_data(user_data),
-                ),
-            ))
-        }
-        MPQSectionType::Header(header) => read_mpq_header(input),
-        _ => unreachable!(),
-    }
-}
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_parses_user_data_magic() {
-        let user_data_header: Vec<u8> = vec![
-            b'M', b'P', b'Q', // Magic
-            0x1b, // 0x1b for User Data
-            0x00, 0x02, 0x00, 0x00, // The user data size
-        ];
-        let archive_header: Vec<u8> = vec![
-            b'M', b'P', b'Q', // Magic
-            0x1a, // 0x1a for Archive Header
-            0xd0, 0x00, 0x00, 0x00, // The archive header size
-        ];
-        assert_eq!(
-            get_mpq_type(&user_data_header),
-            Ok((
-                &b"\x00\x02\x00\x00"[..],
-                MPQSectionType::UserData(MPQUserDataBuilder::new())
-            ))
-        );
-        assert_eq!(
-            get_mpq_type(&archive_header),
-            Ok((
-                &b"\xd0\x00\x00\x00"[..],
-                MPQSectionType::Header(MPQFileHeaderParser::new())
-            ))
-        );
-    }
-
 }
