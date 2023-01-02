@@ -2,52 +2,10 @@
 //! NOTES:
 //! - MPyQ uses struct_format: '<4s2I2H4I'
 
+use super::MPQFileHeaderExt;
 use super::LITTLE_ENDIAN;
-use nom::number::complete::{i16, i64, u16, u32};
+use nom::number::complete::{u16, u32};
 use nom::*;
-
-/// Extended fields only present in the Burning Crusade format and later:
-#[derive(Debug, PartialEq, Default)]
-pub struct MPQFileHeaderExt {
-    extended_block_table_offset: i64,
-    hash_table_offset_high: i16,
-    block_table_offset_high: i16,
-}
-
-impl MPQFileHeaderExt {
-    /// Parses all the fields in the expected order
-    pub fn parse(input: &[u8]) -> IResult<&[u8], MPQFileHeaderExt> {
-        let (input, extended_block_table_offset) = Self::parse_extended_block_table_offset(input)?;
-        let (input, hash_table_offset_high) = Self::parse_hash_table_offset_high(input)?;
-        let (input, block_table_offset_high) = Self::parse_block_table_offset_high(input)?;
-        Ok((
-            input,
-            MPQFileHeaderExt {
-                extended_block_table_offset,
-                hash_table_offset_high,
-                block_table_offset_high,
-            },
-        ))
-    }
-
-    /// Offset 0x20: int64 ExtendedBlockTableOffset
-    /// Offset to the beginning of the extended block table, relative to the beginning of the archive.
-    pub fn parse_extended_block_table_offset(input: &[u8]) -> IResult<&[u8], i64> {
-        i64(LITTLE_ENDIAN)(input)
-    }
-
-    /// Offset 0x28: int16 HashTableOffsetHigh
-    /// High 16 bits of the hash table offset for large archives.
-    pub fn parse_hash_table_offset_high(input: &[u8]) -> IResult<&[u8], i16> {
-        i16(LITTLE_ENDIAN)(input)
-    }
-
-    /// Offset 0x2A: int16 BlockTableOffsetHigh
-    /// High 16 bits of the block table offset for large archives.
-    pub fn parse_block_table_offset_high(input: &[u8]) -> IResult<&[u8], i16> {
-        i16(LITTLE_ENDIAN)(input)
-    }
-}
 
 /// The MPQ File Header
 #[derive(Debug, Default, PartialEq)]
@@ -173,5 +131,33 @@ impl MPQFileHeader {
         }
         let (input, extended_file_header) = MPQFileHeaderExt::parse(input)?;
         Ok((input, Some(extended_file_header)))
+    }
+}
+
+#[cfg(test)]
+pub mod tests {
+    use super::mpq_user_data::tests::basic_user_header;
+    use super::*;
+
+    pub fn basic_file_header() -> Vec<u8> {
+        vec![
+            b'M', b'P', b'Q', // Magic
+            0x1a, // 0x1a for Archive Header
+            0xd0, 0x00, 0x00, 0x00, // The archive header size
+        ]
+    }
+
+    #[test]
+    fn it_parses_headers() {
+        let mut user_data_header_input = basic_user_header();
+        let archive_header = basic_file_header();
+        let (input, header_type) = get_mpq_type(&archive_header_input).unwrap();
+        assert_eq!(header_type, MPQSectionType::Header);
+        user_data_header_input.append(&mut archive_header_input);
+        let (input, header_type) = get_mpq_type(&archive_header_input).unwrap();
+        assert_eq!(
+            get_mpq_type(&archive_header),
+            Ok((&b"\xd0\x00\x00\x00"[..], MPQSectionType::Header,))
+        );
     }
 }

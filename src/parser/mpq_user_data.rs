@@ -58,3 +58,35 @@ impl MPQUserData {
         Ok((input, user_data.to_vec()))
     }
 }
+
+#[cfg(test)]
+pub mod tests {
+    use super::mpq_file_header::tests::basic_file_header;
+    use super::*;
+
+    pub fn basic_user_header() -> Vec<u8> {
+        vec![
+            b'M', b'P', b'Q', // Magic
+            0x1b, // 0x1b for User Data
+            0x00, 0x00, 0x00, 0x04, // The user data size, 4 bytes
+            0x00, 0x00, 0x00, 0x11, // The archive header offset
+            0x00, 0x00, 0x00, 0x00, // 4 bytes of empty user data.
+        ]
+    }
+
+    #[test]
+    fn it_parses_header() {
+        let mut user_data_header_input = basic_user_header();
+        let archive_header = basic_file_header();
+        let (input, header_type) = get_mpq_type(&user_data_header_input).unwrap();
+        assert_eq!(header_type, MPQSectionType::UserData);
+        let (input, header_type) = get_mpq_type(&archive_header_input).unwrap();
+        assert_eq!(header_type, MPQSectionType::Header);
+        user_data_header_input.append(&mut archive_header_input);
+        let (input, header_type) = get_mpq_type(&archive_header_input).unwrap();
+        assert_eq!(
+            get_mpq_type(&archive_header),
+            Ok((&b"\xd0\x00\x00\x00"[..], MPQSectionType::Header,))
+        );
+    }
+}

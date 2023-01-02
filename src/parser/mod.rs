@@ -15,9 +15,11 @@ use std::fs::File;
 use std::io::prelude::*;
 
 pub mod mpq_file_header;
+pub mod mpq_file_header_ext;
 pub mod mpq_hash_table_entry;
 pub mod mpq_user_data;
 pub use mpq_file_header::MPQFileHeader;
+pub use mpq_file_header_ext::MPQFileHeaderExt;
 pub use mpq_hash_table_entry::MPQHashTableEntry;
 pub use mpq_user_data::MPQUserData;
 
@@ -57,28 +59,35 @@ pub fn get_mpq_type(input: &[u8]) -> IResult<&[u8], MPQSectionType> {
     Ok((input, MPQSectionType::from(mpq_type)))
 }
 
-/// Parses the whole input into an MPQ
-pub fn parse(input: &[u8]) -> IResult<&[u8], MPQ> {
-    let mut res = MPQ::default();
+pub fn read_headers(input: &[u8]) -> IResult<&[u8], (MPQFileHeader, Option<MPQUserData>)> {
+    let mut user_data: Option<MPQUserData> = None;
     let (input, mpq_type) = get_mpq_type(input).unwrap();
-    let (input, res) = match mpq_type {
+    let (input, archive_header) = match mpq_type {
         MPQSectionType::UserData => {
-            let (input, user_data) = MPQUserData::parse(input)?;
-            res.user_data = Some(user_data);
+            let (input, parsed_user_data) = MPQUserData::parse(input)?;
+            user_data = Some(parsed_user_data);
             let (input, mpq_type) = get_mpq_type(input)?;
             assert!(MPQSectionType::Header == mpq_type);
-            let (input, header) = MPQFileHeader::parse(input)?;
-            res.header = header;
-            (input, res)
+            MPQFileHeader::parse(input)?
         }
-        MPQSectionType::Header => {
-            let (input, header) = MPQFileHeader::parse(input)?;
-            res.header = header;
-            (input, res)
-        }
+        MPQSectionType::Header => MPQFileHeader::parse(input)?,
         MPQSectionType::Unknown => panic!("Unable to identify magic/section-type combination"),
     };
-    Ok((input, res))
+    Ok((input, (archive_header, user_data)))
+}
+
+/// Parses the whole input into an MPQ
+pub fn parse(input: &[u8]) -> IResult<&[u8], MPQ> {
+    let (input, header, user_data) = read_headers(input)?;
+    let (input, hash_table) = get_mpq_type(input)?;
+    Ok((
+        input,
+        MPQ {
+            user_data,
+            header,
+            hash_table,
+        },
+    ))
 }
 
 /// Convenience function to read a file to parse, mostly for testing.
@@ -92,24 +101,21 @@ pub fn read_file(path: &str) -> Vec<u8> {
 
 #[cfg(test)]
 mod tests {
+    use super::mpq_file_header::tests::basic_file_header;
+    use super::mpq_user_data::tests::basic_user_header;
     use super::*;
 
     #[test]
-    fn it_parses_magic() {
-        let user_data_header: Vec<u8> = vec![
-            b'M', b'P', b'Q', // Magic
-            0x1b, // 0x1b for User Data
-            0x00, 0x02, 0x00, 0x00, // The user data size
-        ];
-        let archive_header: Vec<u8> = vec![
-            b'M', b'P', b'Q', // Magic
-            0x1a, // 0x1a for Archive Header
-            0xd0, 0x00, 0x00, 0x00, // The archive header size
-        ];
-        assert_eq!(
-            get_mpq_type(&user_data_header),
-            Ok((&b"\x00\x02\x00\x00"[..], MPQSectionType::UserData,))
-        );
+    fn it_parses_headers() {
+        // Validate the magics and separate headers.
+        let mut user_data_header_input = basic_user_header();
+        let mut archive_header_input = basic_file_header();
+        let (input, header_type) = get_mpq_type(&user_data_header_input).unwrap();
+        assert_eq!(header_type, MPQSectionType::UserData);
+        let (input, header_type) = get_mpq_type(&archive_header_input).unwrap();
+        assert_eq!(header_type, MPQSectionType::Header);
+        user_data_header_input.append(&mut archive_header_input);
+        let (input, header_type) = get_mpq_type(&archive_header_input).unwrap();
         assert_eq!(
             get_mpq_type(&archive_header),
             Ok((&b"\xd0\x00\x00\x00"[..], MPQSectionType::Header,))
