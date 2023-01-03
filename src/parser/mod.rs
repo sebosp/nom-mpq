@@ -78,7 +78,7 @@ pub fn read_headers(input: &[u8]) -> IResult<&[u8], (MPQFileHeader, Option<MPQUs
 
 /// Parses the whole input into an MPQ
 pub fn parse(input: &[u8]) -> IResult<&[u8], MPQ> {
-    let (input, header, user_data) = read_headers(input)?;
+    let (input, (header, user_data)) = read_headers(input)?;
     let (input, hash_table) = get_mpq_type(input)?;
     Ok((
         input,
