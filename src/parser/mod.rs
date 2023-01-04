@@ -52,21 +52,23 @@ impl From<&[u8]> for MPQSectionType {
     }
 }
 
-/// Gets the header from the MPQ file
-pub fn get_mpq_type(input: &[u8]) -> IResult<&[u8], MPQSectionType> {
+/// Gets the header type from the MPQ file
+pub fn get_header_type(input: &[u8]) -> IResult<&[u8], MPQSectionType> {
     let (input, _) = validate_magic(input)?;
     let (input, mpq_type) = take(1usize)(input)?;
     Ok((input, MPQSectionType::from(mpq_type)))
 }
 
+/// Reads the file headers, headers must contain the Archive File Header
+/// but they may optionally contain the User Data Headers.
 pub fn read_headers(input: &[u8]) -> IResult<&[u8], (MPQFileHeader, Option<MPQUserData>)> {
     let mut user_data: Option<MPQUserData> = None;
-    let (input, mpq_type) = get_mpq_type(input).unwrap();
+    let (input, mpq_type) = get_header_type(input).unwrap();
     let (input, archive_header) = match mpq_type {
         MPQSectionType::UserData => {
             let (input, parsed_user_data) = MPQUserData::parse(input)?;
             user_data = Some(parsed_user_data);
-            let (input, mpq_type) = get_mpq_type(input)?;
+            let (input, mpq_type) = get_header_type(input)?;
             assert!(MPQSectionType::Header == mpq_type);
             MPQFileHeader::parse(input)?
         }
@@ -76,10 +78,15 @@ pub fn read_headers(input: &[u8]) -> IResult<&[u8], (MPQFileHeader, Option<MPQUs
     Ok((input, (archive_header, user_data)))
 }
 
+/// Reads the hash table.
+pub fn read_hash_table(input: &[u8]) -> IResult<&[u8], MPQHashTableEntry> {
+    MPQHashTableEntry::parse(input)
+}
+
 /// Parses the whole input into an MPQ
 pub fn parse(input: &[u8]) -> IResult<&[u8], MPQ> {
     let (input, (header, user_data)) = read_headers(input)?;
-    let (input, hash_table) = get_mpq_type(input)?;
+    let (input, hash_table) = read_hash_table(input)?;
     Ok((
         input,
         MPQ {
@@ -107,18 +114,12 @@ mod tests {
 
     #[test]
     fn it_parses_headers() {
-        // Validate the magics and separate headers.
+        // Let's build the MoPaQ progressively.
         let mut user_data_header_input = basic_user_header();
         let mut archive_header_input = basic_file_header();
-        let (input, header_type) = get_mpq_type(&user_data_header_input).unwrap();
-        assert_eq!(header_type, MPQSectionType::UserData);
-        let (input, header_type) = get_mpq_type(&archive_header_input).unwrap();
-        assert_eq!(header_type, MPQSectionType::Header);
         user_data_header_input.append(&mut archive_header_input);
-        let (input, header_type) = get_mpq_type(&archive_header_input).unwrap();
-        assert_eq!(
-            get_mpq_type(&archive_header),
-            Ok((&b"\xd0\x00\x00\x00"[..], MPQSectionType::Header,))
-        );
+        let (_input, (_archive_header, user_data_header)) =
+            read_headers(&user_data_header_input).unwrap();
+        assert!(user_data_header.is_some());
     }
 }

@@ -23,9 +23,10 @@
 //! - MPyQ uses struct_format: '2I2HI'
 //!   - The format above claims the [`platform`] is a u16.
 //!   - The devklog.net website claims the [`platform`] field is u8
-//!   - This version uses the u16 MPyQ version.
+//!   - In this implementation the u16 MPyQ version is honored.
 
 use super::LITTLE_ENDIAN;
+use nom::error::dbg_dmp;
 use nom::number::complete::{u16, u32};
 use nom::*;
 
@@ -61,13 +62,13 @@ impl MPQHashTableEntry {
     /// Offset 0x00: int32 FilePathHashA
     /// The hash of the file path, using method A.
     pub fn parse_hash_a(input: &[u8]) -> IResult<&[u8], u32> {
-        u32(LITTLE_ENDIAN)(input)
+        dbg_dmp(u32(LITTLE_ENDIAN), "hash_a")(input)
     }
 
     /// Offset 0x04: int32 FilePathHashB
     /// The hash of the file path, using method B.
     pub fn parse_hash_b(input: &[u8]) -> IResult<&[u8], u32> {
-        u32(LITTLE_ENDIAN)(input)
+        dbg_dmp(u32(LITTLE_ENDIAN), "hash_b")(input)
     }
 
     /// Offset 0x08h: int16 Language
@@ -76,14 +77,14 @@ impl MPQHashTableEntry {
     /// 0 indicates the default language (American English), or that the file
     /// is language-neutral.
     pub fn parse_locale(input: &[u8]) -> IResult<&[u8], u16> {
-        u16(LITTLE_ENDIAN)(input)
+        dbg_dmp(u16(LITTLE_ENDIAN), "locale")(input)
     }
 
     /// Offset 0x0a: int16 Platform
     /// The platform the file is used for. 0 indicates the default platform.
     /// No other values have been observed.
     pub fn parse_platform(input: &[u8]) -> IResult<&[u8], u16> {
-        u16(LITTLE_ENDIAN)(input)
+        dbg_dmp(u16(LITTLE_ENDIAN), "platform")(input)
     }
 
     /// Offset 0x0c: int32 FileBlockIndex
@@ -97,6 +98,6 @@ impl MPQHashTableEntry {
     ///   (in other words, the file was deleted).  Does not terminate searches
     ///   for a given file.
     pub fn parse_block_table_index(input: &[u8]) -> IResult<&[u8], u32> {
-        u32(LITTLE_ENDIAN)(input)
+        dbg_dmp(u32(LITTLE_ENDIAN), "block_table_index")(input)
     }
 }

@@ -4,6 +4,7 @@
 
 use super::MPQFileHeaderExt;
 use super::LITTLE_ENDIAN;
+use nom::error::dbg_dmp;
 use nom::number::complete::{u16, u32};
 use nom::*;
 
@@ -52,7 +53,7 @@ impl MPQFileHeader {
     /// Offset 0x04: int32 HeaderSize
     /// Size of the archive header.
     pub fn parse_header_size(input: &[u8]) -> IResult<&[u8], u32> {
-        u32(LITTLE_ENDIAN)(input)
+        dbg_dmp(u32(LITTLE_ENDIAN), "header_size")(input)
     }
 
     /// Offset: 0x08 int32 ArchiveSize
@@ -66,7 +67,7 @@ impl MPQFileHeader {
     /// the end of the hash table, block table, or extended block table
     /// (whichever is largest).
     pub fn parse_archive_size(input: &[u8]) -> IResult<&[u8], u32> {
-        u32(LITTLE_ENDIAN)(input)
+        dbg_dmp(u32(LITTLE_ENDIAN), "archive_size")(input)
     }
 
     /// Offset 0x0c: int16 FormatVersion
@@ -77,7 +78,7 @@ impl MPQFileHeader {
     /// - 0x0001 Burning Crusade format. Header size should be 0x2c,
     ///          and large archives are supported.
     pub fn parse_format_version(input: &[u8]) -> IResult<&[u8], u16> {
-        u16(LITTLE_ENDIAN)(input)
+        dbg_dmp(u16(LITTLE_ENDIAN), "format_version")(input)
     }
 
     /// Offset 0x0e: int8 SectorSizeShift
@@ -88,21 +89,21 @@ impl MPQFileHeader {
     /// Bugs in the Storm library dictate that this shouldalways be:
     /// 3 (4096 byte sectors).
     pub fn parse_sector_size_shift(input: &[u8]) -> IResult<&[u8], u16> {
-        u16(LITTLE_ENDIAN)(input)
+        dbg_dmp(u16(LITTLE_ENDIAN), "sector_size_shift")(input)
     }
 
     /// Offset 0x10: int32 HashTableOffset
     /// Offset to the beginning of the hash table,
     /// relative to the beginning of the archive.
     pub fn parse_hash_table_offset(input: &[u8]) -> IResult<&[u8], u32> {
-        u32(LITTLE_ENDIAN)(input)
+        dbg_dmp(u32(LITTLE_ENDIAN), "hash_table_offset")(input)
     }
 
     /// Offset 0x14: int32 BlockTableOffset
     /// Offset to the beginning of the block table,
     /// relative to the beginning of the archive.
     pub fn parse_block_table_offset(input: &[u8]) -> IResult<&[u8], u32> {
-        u32(LITTLE_ENDIAN)(input)
+        dbg_dmp(u32(LITTLE_ENDIAN), "block_table_offset")(input)
     }
 
     /// Offset 0x18: int32 HashTableEntries
@@ -111,13 +112,13 @@ impl MPQFileHeader {
     ///   less than 2^16 for the original MoPaQ format,
     ///   or less than 2^20 for the Burning Crusade format.
     pub fn parse_hash_table_entries(input: &[u8]) -> IResult<&[u8], u32> {
-        u32(LITTLE_ENDIAN)(input)
+        dbg_dmp(u32(LITTLE_ENDIAN), "hash_table_entries")(input)
     }
 
     /// Offset 0x1c: int32 BlockTableEntries
     /// Number of entries in the block table.
     pub fn parse_block_table_entries(input: &[u8]) -> IResult<&[u8], u32> {
-        u32(LITTLE_ENDIAN)(input)
+        dbg_dmp(u32(LITTLE_ENDIAN), "block_table_entries")(input)
     }
 
     /// Offset 0x20: ExtendedBlockTable
@@ -136,28 +137,46 @@ impl MPQFileHeader {
 
 #[cfg(test)]
 pub mod tests {
-    use super::mpq_user_data::tests::basic_user_header;
-    use super::*;
+    use crate::parser::*;
 
     pub fn basic_file_header() -> Vec<u8> {
+        // struct_format: '<4s2I2H4I'
         vec![
-            b'M', b'P', b'Q', // Magic
-            0x1a, // 0x1a for Archive Header
-            0xd0, 0x00, 0x00, 0x00, // The archive header size
+            b'M',
+            b'P',
+            b'Q', // Magic
+            MPQ_ARCHIVE_HEADER_TYPE,
+            0xd0,
+            0x00,
+            0x00,
+            0x00, // header_size
+            0xcf,
+            0xa3,
+            0x03,
+            0x00, // archive_size
+            0x03,
+            0x00, // format_version
+            0x05,
+            0x00, // sector_size_shift
+            0xbf,
+            0xa0,
+            0x03,
+            0x00, // hash_table_offset
+            0xbf,
+            0xa2,
+            0x03,
+            0x00, // block_table_offset
+            0x20,
+            0x00, // hash_table_entries
+            0x00,
+            0x00, // block_table_entries
         ]
     }
 
     #[test]
-    fn it_parses_headers() {
-        let mut user_data_header_input = basic_user_header();
-        let archive_header = basic_file_header();
-        let (input, header_type) = get_mpq_type(&archive_header_input).unwrap();
+    fn it_parses_header() {
+        // The archive header by itself
+        let (input, header_type) = get_header_type(&basic_file_header()).unwrap();
         assert_eq!(header_type, MPQSectionType::Header);
-        user_data_header_input.append(&mut archive_header_input);
-        let (input, header_type) = get_mpq_type(&archive_header_input).unwrap();
-        assert_eq!(
-            get_mpq_type(&archive_header),
-            Ok((&b"\xd0\x00\x00\x00"[..], MPQSectionType::Header,))
-        );
     }
 }
