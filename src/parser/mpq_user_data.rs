@@ -62,19 +62,7 @@ impl MPQUserData {
     /// Offset 0x10: byte(UserDataSize) UserData
     /// The block to store user data in.
     pub fn parse_content(input: &[u8], user_data_header_size: u32) -> IResult<&[u8], Vec<u8>> {
-        // Thus far we have read 16 bytes:
-        // - The magic (4 bytes)
-        // - The user data size (4 bytes)
-        // - The archive header offset (4 bytes)
-        // - The user data header size (4 bytes)
-        if user_data_header_size <= 16 {
-            panic!(
-                "user_data_header_size should be more than 16 bytes, but got: {}",
-                user_data_header_size
-            );
-        }
-        let (input, content) =
-            dbg_dmp(take(user_data_header_size as usize - 16usize), "content")(input)?;
+        let (input, content) = dbg_dmp(take(user_data_header_size as usize), "content")(input)?;
         Ok((input, content.to_vec()))
     }
 }
@@ -95,18 +83,18 @@ pub mod tests {
             0x00,
             0x00,
             0x00, // user_data_size
+            0x11,
             0x00,
             0x00,
-            0x00,
-            0x11, // archive_header_offset
-            0x00,
-            0x00,
-            0x00,
-            0x04, // user_data_header_size
+            0x00, // archive_header_offset
+            0x04,
             0x00,
             0x00,
-            0x00,
-            0x00, // content
+            0x00, // user_data_header_size
+            0xbe,
+            0xef,
+            0xca,
+            0x4e, // content
         ]
     }
 
@@ -116,7 +104,10 @@ pub mod tests {
         let user_data_header_input = basic_user_header();
         let (input, header_type) = get_header_type(&user_data_header_input).unwrap();
         assert_eq!(header_type, MPQSectionType::UserData);
-        let (_input, user_data) = MPQUserData::parse(input).unwrap();
-        assert_eq!(user_data.archive_header_offset, 12);
+        let (input, user_data) = MPQUserData::parse(input).unwrap();
+        assert_eq!(user_data.archive_header_offset, 0x11);
+        assert_eq!(user_data.user_data_header_size, 0x04);
+        assert_eq!(user_data.content, vec![0xbe, 0xef, 0xca, 0x4e]);
+        assert_eq!(input, &b""[..]);
     }
 }

@@ -9,6 +9,7 @@
 use super::MPQ;
 use nom::bytes::complete::{tag, take};
 use nom::error::dbg_dmp;
+use nom::HexDisplay;
 use nom::IResult;
 use std::convert::From;
 use std::fs::File;
@@ -53,6 +54,7 @@ impl From<&[u8]> for MPQSectionType {
 }
 
 /// Gets the header type from the MPQ file
+#[tracing::instrument(skip(input), fields(i = input[0..8].to_hex(8)))]
 pub fn get_header_type(input: &[u8]) -> IResult<&[u8], MPQSectionType> {
     let (input, _) = validate_magic(input)?;
     let (input, mpq_type) = take(1usize)(input)?;
@@ -61,9 +63,10 @@ pub fn get_header_type(input: &[u8]) -> IResult<&[u8], MPQSectionType> {
 
 /// Reads the file headers, headers must contain the Archive File Header
 /// but they may optionally contain the User Data Headers.
+#[tracing::instrument(skip(input), fields(i = input[0..8].to_hex(8)))]
 pub fn read_headers(input: &[u8]) -> IResult<&[u8], (MPQFileHeader, Option<MPQUserData>)> {
     let mut user_data: Option<MPQUserData> = None;
-    let (input, mpq_type) = get_header_type(input).unwrap();
+    let (input, mpq_type) = get_header_type(input)?;
     let (input, archive_header) = match mpq_type {
         MPQSectionType::UserData => {
             let (input, parsed_user_data) = MPQUserData::parse(input)?;
@@ -111,6 +114,8 @@ mod tests {
     use super::mpq_file_header::tests::basic_file_header;
     use super::mpq_user_data::tests::basic_user_header;
     use super::*;
+    use nom::HexDisplay;
+    use test_log::test;
 
     #[test]
     fn it_parses_headers() {
@@ -118,6 +123,7 @@ mod tests {
         let mut user_data_header_input = basic_user_header();
         let mut archive_header_input = basic_file_header();
         user_data_header_input.append(&mut archive_header_input);
+        println!("{}", user_data_header_input.to_hex(8));
         let (_input, (_archive_header, user_data_header)) =
             read_headers(&user_data_header_input).unwrap();
         assert!(user_data_header.is_some());
