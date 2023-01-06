@@ -166,8 +166,12 @@ pub mod tests {
             0xa2,
             0x03,
             0x00, // block_table_offset
-            0x20,
+            0x01,
+            0x00,
+            0x00,
             0x00, // hash_table_entries
+            0x02,
+            0x00,
             0x00,
             0x00, // block_table_entries
         ]
@@ -176,7 +180,11 @@ pub mod tests {
     #[test]
     fn it_parses_header() {
         // The archive header by itself
-        let (input, header_type) = get_header_type(&basic_file_header()).unwrap();
+        let basic_file_header_input = basic_file_header();
+        let (input, header_type) = get_header_type(&basic_file_header_input).unwrap();
         assert_eq!(header_type, MPQSectionType::Header);
+        let (_input, header_data) = MPQFileHeader::parse(input).unwrap();
+        assert_eq!(header_data.hash_table_entries, 1);
+        assert_eq!(header_data.block_table_entries, 2);
     }
 }
