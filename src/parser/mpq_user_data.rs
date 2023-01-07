@@ -27,6 +27,8 @@ impl MPQUserData {
         let (input, archive_header_offset) = Self::parse_archive_header_offset(input)?;
         let (input, user_data_header_size) = Self::parse_user_data_header_size(input)?;
         let (input, content) = Self::parse_content(input, user_data_header_size)?;
+        let (input, _) =
+            Self::consume_until_header_offset(input, user_data_header_size, archive_header_offset)?;
         Ok((
             input,
             MPQUserData {
@@ -65,6 +67,34 @@ impl MPQUserData {
         let (input, content) = dbg_dmp(take(user_data_header_size as usize), "content")(input)?;
         Ok((input, content.to_vec()))
     }
+
+    /// Offset Varying: padded data
+    /// Consumes until the header_offset, in MPyQ this is done through file.seek
+    pub fn consume_until_header_offset(
+        input: &[u8],
+        user_data_header_size: u32,
+        archive_header_offset: u32,
+    ) -> IResult<&[u8], ()> {
+        // Thus far we have read 16 bytes + the user_data_header_size
+        // - 4 bytes for the magic
+        // - 4 bytes for the user_data_size
+        // - 4 bytes for the archive_header_offset
+        // - 4 bytes for the user_data_header_size
+        // - user_data_header_size bytes
+        let curr_read_byte_count = 16;
+        if archive_header_offset < user_data_header_size + curr_read_byte_count {
+            panic!(
+                "Invalid archive_header_offset: {}, should be bigger than {}",
+                archive_header_offset,
+                user_data_header_size + curr_read_byte_count
+            );
+        }
+        let (input, _) = dbg_dmp(
+            take((archive_header_offset - (user_data_header_size + curr_read_byte_count)) as usize),
+            "content",
+        )(input)?;
+        Ok((input, ()))
+    }
 }
 
 #[cfg(test)]
@@ -82,8 +112,8 @@ pub mod tests {
             0x00,
             0x00,
             0x00,
-            0x00, // user_data_size
-            0x11,
+            0x00, // user_data_size (unused)
+            0x18,
             0x00,
             0x00,
             0x00, // archive_header_offset
@@ -95,6 +125,10 @@ pub mod tests {
             0xef,
             0xca,
             0x4e, // content
+            0x00,
+            0x00,
+            0x00,
+            0x00, // Some padded data, MPQFileHeader should continue
         ]
     }
 
@@ -105,7 +139,7 @@ pub mod tests {
         let (input, header_type) = get_header_type(&user_data_header_input).unwrap();
         assert_eq!(header_type, MPQSectionType::UserData);
         let (input, user_data) = MPQUserData::parse(input).unwrap();
-        assert_eq!(user_data.archive_header_offset, 0x11);
+        assert_eq!(user_data.archive_header_offset, 0x18);
         assert_eq!(user_data.user_data_header_size, 0x04);
         assert_eq!(user_data.content, vec![0xbe, 0xef, 0xca, 0x4e]);
         assert_eq!(input, &b""[..]);
