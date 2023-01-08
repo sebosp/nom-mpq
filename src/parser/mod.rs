@@ -9,6 +9,7 @@
 use super::MPQ;
 use nom::bytes::complete::{tag, take};
 use nom::error::dbg_dmp;
+use nom::number::Endianness;
 use nom::HexDisplay;
 use nom::IResult;
 use std::convert::From;
@@ -26,7 +27,7 @@ pub use mpq_user_data::MPQUserData;
 
 pub const MPQ_ARCHIVE_HEADER_TYPE: u8 = 0x1a;
 pub const MPQ_USER_DATA_HEADER_TYPE: u8 = 0x1b;
-pub const LITTLE_ENDIAN: nom::number::Endianness = nom::number::Endianness::Little;
+pub const LITTLE_ENDIAN: Endianness = Endianness::Little;
 
 fn validate_magic(input: &[u8]) -> IResult<&[u8], &[u8]> {
     dbg_dmp(tag(b"MPQ"), "tag")(input)
@@ -54,28 +55,35 @@ impl From<&[u8]> for MPQSectionType {
 }
 
 /// Gets the header type from the MPQ file
-#[tracing::instrument(skip(input), fields(i = input[0..8].to_hex(8)))]
+#[tracing::instrument(level = "trace", skip(input), fields(i = input[0..8].to_hex(8)))]
 pub fn get_header_type(input: &[u8]) -> IResult<&[u8], MPQSectionType> {
     let (input, _) = validate_magic(input)?;
     let (input, mpq_type) = take(1usize)(input)?;
-    Ok((input, MPQSectionType::from(mpq_type)))
+    let mpq_type = MPQSectionType::from(mpq_type);
+    tracing::debug!(
+        "({:<16?}, tail: {})",
+        mpq_type,
+        input[0..8].to_hex(8).trim_end()
+    );
+    Ok((input, mpq_type))
 }
 
 /// Reads the file headers, headers must contain the Archive File Header
 /// but they may optionally contain the User Data Headers.
-#[tracing::instrument(skip(input), fields(i = input[0..8].to_hex(8)))]
+#[tracing::instrument(level = "trace", skip(input), fields(i = input[0..8].to_hex(8)))]
 pub fn read_headers(input: &[u8]) -> IResult<&[u8], (MPQFileHeader, Option<MPQUserData>)> {
     let mut user_data: Option<MPQUserData> = None;
     let (input, mpq_type) = get_header_type(input)?;
     let (input, archive_header) = match mpq_type {
         MPQSectionType::UserData => {
             let (input, parsed_user_data) = MPQUserData::parse(input)?;
+            let header_offset = parsed_user_data.archive_header_offset;
             user_data = Some(parsed_user_data);
             let (input, mpq_type) = get_header_type(input)?;
             assert!(MPQSectionType::Header == mpq_type);
-            MPQFileHeader::parse(input)?
+            MPQFileHeader::parse(input, header_offset as usize)?
         }
-        MPQSectionType::Header => MPQFileHeader::parse(input)?,
+        MPQSectionType::Header => MPQFileHeader::parse(input, 0)?,
         MPQSectionType::Unknown => panic!("Unable to identify magic/section-type combination"),
     };
     Ok((input, (archive_header, user_data)))

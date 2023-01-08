@@ -11,19 +11,22 @@ use nom::*;
 /// The MPQ File Header
 #[derive(Debug, Default, PartialEq)]
 pub struct MPQFileHeader {
-    header_size: u32,
-    archive_size: u32,
-    format_version: u16,
-    sector_size_shift: u16,
-    hash_table_offset: u32,
-    block_table_offset: u32,
-    hash_table_entries: u32,
-    block_table_entries: u32,
-    extended_file_header: Option<MPQFileHeaderExt>,
+    pub header_size: u32,
+    pub archive_size: u32,
+    pub format_version: u16,
+    pub sector_size_shift: u16,
+    pub hash_table_offset: u32,
+    pub block_table_offset: u32,
+    pub hash_table_entries: u32,
+    pub block_table_entries: u32,
+    pub extended_file_header: Option<MPQFileHeaderExt>,
+    // Store the offset at which the FileHeader was found.
+    // this is done because other offsets are relative to this one.
+    pub offset: usize,
 }
 
 impl MPQFileHeader {
-    pub fn parse(input: &[u8]) -> IResult<&[u8], Self> {
+    pub fn parse(input: &[u8], offset: usize) -> IResult<&[u8], Self> {
         let (input, header_size) = Self::parse_header_size(input)?;
         let (input, archive_size) = Self::parse_archive_size(input)?;
         let (input, format_version) = Self::parse_format_version(input)?;
@@ -46,6 +49,7 @@ impl MPQFileHeader {
                 hash_table_entries,
                 block_table_entries,
                 extended_file_header,
+                offset,
             },
         ))
     }
@@ -183,7 +187,7 @@ pub mod tests {
         let basic_file_header_input = basic_file_header();
         let (input, header_type) = get_header_type(&basic_file_header_input).unwrap();
         assert_eq!(header_type, MPQSectionType::Header);
-        let (_input, header_data) = MPQFileHeader::parse(input).unwrap();
+        let (_input, header_data) = MPQFileHeader::parse(input, 0).unwrap();
         assert_eq!(header_data.hash_table_entries, 1);
         assert_eq!(header_data.block_table_entries, 2);
     }

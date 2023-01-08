@@ -15,7 +15,7 @@ pub enum MPQParserError {
 
 #[derive(Debug, Default)]
 pub struct MPQ {
-    pub header: MPQFileHeader,
+    pub archive_header: MPQFileHeader,
     pub user_data: Option<MPQUserData>,
     pub hash_table: MPQHashTableEntry,
 }
