@@ -87,17 +87,17 @@ pub fn read_hash_table(input: &[u8]) -> IResult<&[u8], MPQHashTableEntry> {
 }
 
 /// Parses the whole input into an MPQ
-pub fn parse(input: &[u8]) -> IResult<&[u8], MPQ> {
-    let (input, (header, user_data)) = read_headers(input)?;
-    let (input, hash_table) = read_hash_table(input)?;
-    Ok((
-        input,
-        MPQ {
-            user_data,
-            header,
-            hash_table,
-        },
-    ))
+pub fn parse(orig_input: &[u8]) -> IResult<&[u8], MPQ> {
+    let (_tail, (file_header, user_data)) = read_headers(orig_input)?;
+    let (tail, hash_table) = read_hash_table(
+        &orig_input[(file_header.hash_table_offset as usize + file_header.offset)..],
+    )?;
+    let mpq = MPQ {
+        user_data,
+        archive_header: file_header,
+        hash_table,
+    };
+    Ok((tail, mpq))
 }
 
 /// Convenience function to read a file to parse, mostly for testing.
