@@ -13,6 +13,7 @@ use nom::number::Endianness;
 use nom::HexDisplay;
 use nom::IResult;
 use std::convert::From;
+use std::convert::TryFrom;
 use std::fs::File;
 use std::io::prelude::*;
 
@@ -31,6 +32,39 @@ pub const LITTLE_ENDIAN: Endianness = Endianness::Little;
 
 fn validate_magic(input: &[u8]) -> IResult<&[u8], &[u8]> {
     dbg_dmp(tag(b"MPQ"), "tag")(input)
+}
+
+#[derive(Debug, PartialEq, Copy, Clone)]
+pub enum MPQHashType {
+    TableOffset,
+    HashA,
+    HashB,
+    Table,
+}
+
+impl TryFrom<u32> for MPQHashType {
+    type Error = String;
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::TableOffset),
+            1 => Ok(Self::HashA),
+            2 => Ok(Self::HashB),
+            3 => Ok(Self::Table),
+            _ => Err(format!("Unknown HashType number {}", value)),
+        }
+    }
+}
+
+impl TryFrom<MPQHashType> for u32 {
+    type Error = String;
+    fn try_from(value: MPQHashType) -> Result<Self, Self::Error> {
+        match value {
+            MPQHashType::TableOffset => Ok(0),
+            MPQHashType::HashA => Ok(1),
+            MPQHashType::HashB => Ok(2),
+            MPQHashType::Table => Ok(3),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -89,15 +123,11 @@ pub fn read_headers(input: &[u8]) -> IResult<&[u8], (MPQFileHeader, Option<MPQUs
     Ok((input, (archive_header, user_data)))
 }
 
-/// Reads the hash table.
-pub fn read_hash_table(input: &[u8]) -> IResult<&[u8], MPQHashTableEntry> {
-    MPQHashTableEntry::parse(input)
-}
-
 /// Parses the whole input into an MPQ
 pub fn parse(orig_input: &[u8]) -> IResult<&[u8], MPQ> {
     let (_tail, (file_header, user_data)) = read_headers(orig_input)?;
-    let (tail, hash_table) = read_hash_table(
+    // "seek" to the hash table offset.
+    let (tail, hash_table) = MPQHashTableEntry::parse(
         &orig_input[(file_header.hash_table_offset as usize + file_header.offset)..],
     )?;
     let mpq = MPQ {
