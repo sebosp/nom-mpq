@@ -61,6 +61,7 @@ impl MPQBuilder {
         res
     }
 
+    /// `_hash` on MPyQ
     pub fn mpq_string_hash(self, location: &str, hash_type: MPQHashType) -> u32 {
         let mut seed1: u32 = 0x7FED7FED;
         let mut seed2: u32 = 0xEEEEEEEE;
@@ -78,5 +79,36 @@ impl MPQBuilder {
             seed2 = ch_ord + seed1 + seed2 + (seed2 << 5) + 3 & 0xFFFFFFFF;
         }
         seed1
+    }
+
+    /// Sets the archive header field
+    pub fn with_archive_header(mut self, archive_header: MPQFileHeader) -> Self {
+        self.archive_header = Some(archive_header);
+        self
+    }
+
+    /// Sets the user data field
+    pub fn with_user_data(mut self, user_data: Option<MPQUserData>) -> Self {
+        self.user_data = user_data;
+        self
+    }
+
+    /// Sets the user data field
+    pub fn with_hash_table(mut self, hash_table: MPQHashTableEntry) -> Self {
+        self.hash_table = Some(hash_table);
+        self
+    }
+
+    pub fn build(self) -> Result<MPQ, String> {
+        let archive_header = self
+            .archive_header
+            .ok_or(String::from("Missing user data"))?;
+        let user_data = self.user_data;
+        let hash_table = self.hash_table.ok_or(String::from("Missing hash table"))?;
+        Ok(MPQ {
+            archive_header,
+            user_data,
+            hash_table,
+        })
     }
 }

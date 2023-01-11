@@ -6,7 +6,7 @@
 //!   - offset from the beginning of the structure: data type(array size)
 //!     member name : member description
 
-use super::MPQ;
+use super::{MPQBuilder, MPQ};
 use nom::bytes::complete::{tag, take};
 use nom::error::dbg_dmp;
 use nom::number::Endianness;
@@ -113,6 +113,7 @@ pub fn read_headers(input: &[u8]) -> IResult<&[u8], (MPQFileHeader, Option<MPQUs
             let (input, parsed_user_data) = MPQUserData::parse(input)?;
             let header_offset = parsed_user_data.archive_header_offset;
             user_data = Some(parsed_user_data);
+            // If there is user data, it must be immediately followed by the Archive Header
             let (input, mpq_type) = get_header_type(input)?;
             assert!(MPQSectionType::Header == mpq_type);
             MPQFileHeader::parse(input, header_offset as usize)?
@@ -125,16 +126,16 @@ pub fn read_headers(input: &[u8]) -> IResult<&[u8], (MPQFileHeader, Option<MPQUs
 
 /// Parses the whole input into an MPQ
 pub fn parse(orig_input: &[u8]) -> IResult<&[u8], MPQ> {
-    let (_tail, (file_header, user_data)) = read_headers(orig_input)?;
+    let (_tail, (archive_header, user_data)) = read_headers(orig_input)?;
     // "seek" to the hash table offset.
     let (tail, hash_table) = MPQHashTableEntry::parse(
-        &orig_input[(file_header.hash_table_offset as usize + file_header.offset)..],
+        &orig_input[(archive_header.hash_table_offset as usize + archive_header.offset)..],
     )?;
-    let mpq = MPQ {
-        user_data,
-        archive_header: file_header,
-        hash_table,
-    };
+    let builder = MPQBuilder::new()
+        .with_archive_header(archive_header)
+        .with_user_data(user_data)
+        .with_hash_table(hash_table);
+    let mpq = builder.build().unwrap();
     Ok((tail, mpq))
 }
 
