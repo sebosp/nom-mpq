@@ -1,4 +1,5 @@
 use nom_mpq::*;
+use test_log::test;
 
 #[test]
 fn it_parses_file() {
