@@ -30,25 +30,25 @@ use nom::error::dbg_dmp;
 use nom::number::complete::{u16, u32};
 use nom::*;
 
-#[derive(Debug, PartialEq, Default)]
+#[derive(Debug, PartialEq, Default, Clone)]
 pub struct MPQHashTableEntry {
-    hash_a: u32,
-    hash_b: u32,
-    locale: u16,
-    platform: u16,
-    block_table_index: u32,
+    pub hash_a: u32,
+    pub hash_b: u32,
+    pub locale: u16,
+    pub platform: u16,
+    pub block_table_index: u32,
 }
 
 impl MPQHashTableEntry {
     /// Parses all the fields in the expected order
     pub fn parse(input: &[u8]) -> IResult<&[u8], Self> {
-        let (input, hash_a) = Self::parse_hash_a(input)?;
-        let (input, hash_b) = Self::parse_hash_b(input)?;
-        let (input, locale) = Self::parse_locale(input)?;
-        let (input, platform) = Self::parse_platform(input)?;
-        let (input, block_table_index) = Self::parse_block_table_index(input)?;
+        let (tail, hash_a) = Self::parse_hash_a(input)?;
+        let (tail, hash_b) = Self::parse_hash_b(tail)?;
+        let (tail, locale) = Self::parse_locale(tail)?;
+        let (tail, platform) = Self::parse_platform(tail)?;
+        let (tail, block_table_index) = Self::parse_block_table_index(tail)?;
         Ok((
-            input,
+            tail,
             MPQHashTableEntry {
                 hash_a,
                 hash_b,
