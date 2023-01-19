@@ -9,7 +9,6 @@ edition = "2021"
 nom = "7.1.1"
 thiserror = "1.0.38"
 tracing = "0.1"
-byteorder = "1.4"
 
 [dev-dependencies]
 test-log = { version = "0.2", default-features = false, features = ["trace"] }
