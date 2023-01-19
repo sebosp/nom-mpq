@@ -18,23 +18,23 @@ use nom::error::dbg_dmp;
 use nom::number::complete::u32;
 use nom::*;
 
-#[derive(Debug, PartialEq, Default)]
+#[derive(Debug, PartialEq, Default, Clone)]
 pub struct MPQBlockTableEntry {
-    offset: u32,
-    archived_size: u32,
-    size: u32,
-    flags: u32,
+    pub offset: u32,
+    pub archived_size: u32,
+    pub size: u32,
+    pub flags: u32,
 }
 
 impl MPQBlockTableEntry {
     /// Parses all the fields in the expected order
     pub fn parse(input: &[u8]) -> IResult<&[u8], Self> {
-        let (input, offset) = Self::parse_offset(input)?;
-        let (input, archived_size) = Self::parse_archived_size(input)?;
-        let (input, size) = Self::parse_size(input)?;
-        let (input, flags) = Self::parse_flags(input)?;
+        let (tail, offset) = Self::parse_offset(input)?;
+        let (tail, archived_size) = Self::parse_archived_size(tail)?;
+        let (tail, size) = Self::parse_size(tail)?;
+        let (tail, flags) = Self::parse_flags(tail)?;
         Ok((
-            input,
+            tail,
             MPQBlockTableEntry {
                 offset,
                 archived_size,
