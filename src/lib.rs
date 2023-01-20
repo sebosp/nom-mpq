@@ -2,14 +2,34 @@
 
 use std::collections::HashMap;
 
+use nom::bytes::complete::take;
+use nom::error::dbg_dmp;
+use nom::number::complete::{u32, u8};
+use nom::IResult;
 use parser::MPQBlockTableEntry;
 use parser::MPQHashType;
 use thiserror::Error;
 
 pub mod parser;
+use compress::zlib;
 pub use parser::MPQFileHeader;
 pub use parser::MPQHashTableEntry;
 pub use parser::MPQUserData;
+use parser::LITTLE_ENDIAN;
+use std::io::Read;
+
+pub const MPQ_FILE_IMPLODE: u32 = 0x00000100;
+pub const MPQ_FILE_COMPRESS: u32 = 0x00000200;
+pub const MPQ_FILE_ENCRYPTED: u32 = 0x00010000;
+pub const MPQ_FILE_FIX_KEY: u32 = 0x00020000;
+pub const MPQ_FILE_SINGLE_UNIT: u32 = 0x01000000;
+pub const MPQ_FILE_DELETE_MARKER: u32 = 0x02000000;
+pub const MPQ_FILE_SECTOR_CRC: u32 = 0x04000000;
+pub const MPQ_FILE_EXISTS: u32 = 0x80000000;
+
+pub const COMPRESSION_PLAINTEXT: u8 = 0;
+pub const COMPRESSION_ZLIB: u8 = 2;
+pub const COMPRESSION_BZ2: u8 = 16;
 
 #[derive(Error, Debug)]
 pub enum MPQParserError {
@@ -67,7 +87,7 @@ impl MPQBuilder {
 
     /// `_hash` on MPyQ
     /// Hash a string using MPQ's hash function
-    pub fn mpq_string_hash(&self, location: &'static str, hash_type: MPQHashType) -> u32 {
+    pub fn mpq_string_hash(&self, location: &str, hash_type: MPQHashType) -> u32 {
         let mut seed1: u64 = 0x7FED7FEDu64;
         let mut seed2: u64 = 0xEEEEEEEEu64;
         for ch in location.to_uppercase().chars() {
@@ -80,33 +100,121 @@ impl MPQBuilder {
                     (hash_type_idx << 8) + ch_ord
                 ),
             };
-            tracing::error!("({value} ^ ({seed1} + {seed2})) & 0xFFFFFFFF");
             seed1 = (*value as u64 ^ (seed1 + seed2)) & 0xFFFFFFFFu64;
             seed2 = ch_ord as u64 + seed1 + seed2 + (seed2 << 5) + 3 & 0xFFFFFFFFu64;
         }
         seed1 as u32
     }
 
+    /// Get the hash table entry corresponding to a given filename.
+    pub fn get_hash_table_entry(&self, filename: &str) -> Option<MPQHashTableEntry> {
+        let hash_a = self.mpq_string_hash(filename, MPQHashType::HashA);
+        let hash_b = self.mpq_string_hash(filename, MPQHashType::HashB);
+        for entry in &self.hash_table_entries {
+            if entry.hash_a == hash_a && entry.hash_b == hash_b {
+                return Some(entry.clone());
+            }
+        }
+        None
+    }
+
+    /// Read the compression type and decompress file data.
+    pub fn decompress(input: &[u8]) -> IResult<&[u8], Vec<u8>> {
+        let mut data = vec![];
+        let (tail, compression_type) = dbg_dmp(u8, "compression_type")(input)?;
+        match compression_type {
+            COMPRESSION_PLAINTEXT => data = tail[..].to_vec(),
+            COMPRESSION_ZLIB => {
+                let _ = zlib::Decoder::new(tail).read_to_end(&mut data).unwrap();
+            }
+            COMPRESSION_BZ2 => {
+                let mut decompressor = bzip2::Decompress::new(false);
+                let _ = decompressor.decompress(tail, &mut data).unwrap();
+            }
+            _ => panic!("Unsupported compression type: {}", compression_type),
+        };
+
+        Ok((tail, data))
+    }
+
+    /// Read a file from the MPQ archive.
+    pub fn read_file<'a>(
+        &'a self,
+        filename: &str,
+        force_decompress: bool,
+        orig_input: &'a [u8],
+    ) -> IResult<&'a [u8], Option<Vec<u8>>> {
+        let hash_entry = match self.get_hash_table_entry(filename) {
+            Some(val) => val,
+            None => return Ok((orig_input, None)),
+        };
+        let block_entry = self.block_table_entries[hash_entry.block_table_index as usize].clone();
+        // Read the block
+        if block_entry.flags & MPQ_FILE_EXISTS == 0 {
+            return Ok((orig_input, None));
+        }
+        if block_entry.archived_size == 0 {
+            return Ok((orig_input, None));
+        }
+        let header_offset = match &self.archive_header {
+            Some(val) => val.offset,
+            None => 0usize,
+        };
+        let offset = block_entry.offset as usize + header_offset;
+        let (input, file_data) =
+            dbg_dmp(take(block_entry.archived_size), "file_data")(&orig_input[offset..])?;
+
+        if block_entry.flags & MPQ_FILE_ENCRYPTED != 0 {
+            panic!("Encryption is not supported");
+        }
+        if block_entry.flags & MPQ_FILE_SINGLE_UNIT != 0 {
+            // Single unit files only need to be decompressed, but
+            // compression only happens when at least one byte is gained.
+            if block_entry.flags & MPQ_FILE_COMPRESS != 0 && force_decompress
+                || block_entry.size > block_entry.archived_size
+            {
+                let (_tail, decompressed_data) = Self::decompress(file_data)?;
+                return Ok((orig_input, Some(decompressed_data)));
+            }
+        }
+        Ok((orig_input, None))
+    }
+
     /// `_decrypt` on MPyQ
     /// Decrypt hash or block table or a sector.
-    pub fn mpq_data_decrypt(&self, data: &[u8], key: u32) -> Vec<u8> {
-          let mut seed1 = key as u64;
-          let mut seed2 = 0xEEEEEEEEu64;
-          let mut res = vec![];
+    pub fn mpq_data_decrypt<'a>(&'a self, data: &'a [u8], key: u32) -> IResult<&'a [u8], Vec<u8>> {
+        let mut seed1 = key as u64;
+        let mut seed2 = 0xEEEEEEEEu64;
+        let mut res = vec![];
 
-          for i in range(len(data) // 4):
-              seed2 += self.encryption_table[0x400 + (seed1 & 0xFF)]
-              seed2 &= 0xFFFFFFFF
-              value = struct.unpack("<I", data[i*4:i*4+4])[0] : Any
-              value = (value ^ (seed1 + seed2)) & 0xFFFFFFFF : Unknown
+        for i in 0..(data.len() as f32 / 4f32).floor() as usize {
+            let encryption_table_value =
+                match self.encryption_table.get(&(0x400 + (seed1 & 0xFF) as u32)) {
+                    Some(val) => *val as u64,
+                    None => {
+                        tracing::error!(
+                            "Encryption table value not found for: {}",
+                            (0x400 + (seed1 & 0xFF) as u32)
+                        );
+                        continue;
+                    }
+                };
+            seed2 += encryption_table_value;
+            seed2 &= 0xFFFFFFFFu64;
+            let (_tail, value) =
+                dbg_dmp(u32(LITTLE_ENDIAN), "encrypted_value")(&data[i * 4..i * 4 + 4])?;
+            let mut value = value as u64;
+            value = (value as u64 ^ (seed1 + seed2)) & 0xFFFFFFFFu64;
 
-              seed1 = ((~seed1 << 0x15) + 0x11111111) | (seed1 >> 0x0B) : Unknown
-              seed1 &= 0xFFFFFFFF
-              seed2 = value + seed2 + (seed2 << 5) + 3 & 0xFFFFFFFF : Unknown
+            seed1 = ((!seed1 << 0x15) + 0x11111111) | (seed1 >> 0x0B);
+            seed1 &= 0xFFFFFFFF;
+            seed2 = value + seed2 + (seed2 << 5) + 3 & 0xFFFFFFFFu64;
 
-              result.write(struct.pack("<I", value))
+            // pack in little endian
+            res.append(&mut value.to_le_bytes().to_vec());
+        }
 
-          res
+        Ok((data, res))
     }
 
     /// Sets the archive header field
@@ -133,18 +241,7 @@ impl MPQBuilder {
         self
     }
 
-    pub fn parse_hash_table_entries(mut self, orig_input: &[u8]) -> Self {
-        let mut res = self;
-        res
-    }
-
-    pub fn parse_block_table_entries(mut self, orig_input: &[u8]) -> Self {
-        let mut res = self;
-        res
-    }
-    pub fn build(self, orig_input: &[u8]) -> Result<MPQ, String> {
-        let hash_table_key = self.mpq_string_hash("(hash table)", MPQHashType::Table);
-        let block_table_key = self.mpq_string_hash("(block table)", MPQHashType::Table);
+    pub fn build(self, _orig_input: &[u8]) -> Result<MPQ, String> {
         let archive_header = self
             .archive_header
             .ok_or(String::from("Missing user data"))?;
