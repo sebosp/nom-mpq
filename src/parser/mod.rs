@@ -17,10 +17,12 @@ use std::convert::TryFrom;
 use std::fs::File;
 use std::io::prelude::*;
 
+pub mod mpq_block_table_entry;
 pub mod mpq_file_header;
 pub mod mpq_file_header_ext;
 pub mod mpq_hash_table_entry;
 pub mod mpq_user_data;
+pub use mpq_block_table_entry::MPQBlockTableEntry;
 pub use mpq_file_header::MPQFileHeader;
 pub use mpq_file_header_ext::MPQFileHeaderExt;
 pub use mpq_hash_table_entry::MPQHashTableEntry;
@@ -92,7 +94,7 @@ impl From<&[u8]> for MPQSectionType {
 #[tracing::instrument(level = "trace", skip(input), fields(i = input[0..8].to_hex(8)))]
 pub fn get_header_type(input: &[u8]) -> IResult<&[u8], MPQSectionType> {
     let (input, _) = validate_magic(input)?;
-    let (input, mpq_type) = take(1usize)(input)?;
+    let (input, mpq_type) = dbg_dmp(take(1usize), "mpq_type")(input)?;
     let mpq_type = MPQSectionType::from(mpq_type);
     tracing::debug!(
         "({:<16?}, tail: {})",
@@ -126,20 +128,57 @@ pub fn read_headers(input: &[u8]) -> IResult<&[u8], (MPQFileHeader, Option<MPQUs
 
 /// Parses the whole input into an MPQ
 pub fn parse(orig_input: &[u8]) -> IResult<&[u8], MPQ> {
-    let (_tail, (archive_header, user_data)) = read_headers(orig_input)?;
+    let builder = MPQBuilder::new();
+    let hash_table_key = builder.mpq_string_hash("(hash table)", MPQHashType::Table);
+    let block_table_key = builder.mpq_string_hash("(block table)", MPQHashType::Table);
+    let (tail, (archive_header, user_data)) = read_headers(orig_input)?;
     // "seek" to the hash table offset.
-    let (tail, hash_table) = MPQHashTableEntry::parse(
-        &orig_input[(archive_header.hash_table_offset as usize + archive_header.offset)..],
-    )?;
-    let builder = MPQBuilder::new()
+    let hash_table_offset = archive_header.hash_table_offset as usize + archive_header.offset;
+    let mut hash_table_entries = vec![];
+    {
+        let mut hash_table_position = &orig_input[hash_table_offset..];
+        for _ in 0..archive_header.hash_table_entries {
+            let (new_hash_table_position, hash_table_data) =
+                dbg_dmp(take(16usize), "hash_table_data")(hash_table_position)?;
+            let decrypted_entry = match builder.mpq_data_decrypt(hash_table_data, hash_table_key) {
+                Ok((_, value)) => value,
+                Err(_) => continue,
+            };
+            match MPQHashTableEntry::parse(&decrypted_entry) {
+                Ok((_, val)) => hash_table_entries.push(val),
+                Err(_) => continue,
+            };
+            hash_table_position = new_hash_table_position;
+        }
+    }
+    // "seek" to the block table offset.
+    let block_table_offset = archive_header.block_table_offset as usize + archive_header.offset;
+    let mut block_table_position = &orig_input[block_table_offset..];
+    let mut block_table_entries = vec![];
+    for _ in 0..archive_header.block_table_entries {
+        let (new_block_table_position, block_table_data) =
+            dbg_dmp(take(16usize), "block_table_data")(&block_table_position)?;
+        let decrypted_entry = match builder.mpq_data_decrypt(block_table_data, block_table_key) {
+            Ok((_, value)) => value,
+            Err(_) => continue,
+        };
+        match MPQBlockTableEntry::parse(&decrypted_entry) {
+            Ok((_, val)) => block_table_entries.push(val),
+            Err(_) => continue,
+        };
+        block_table_position = new_block_table_position;
+    }
+    let mpq = builder
         .with_archive_header(archive_header)
         .with_user_data(user_data)
-        .with_hash_table(hash_table);
-    let mpq = builder.build().unwrap();
+        .with_hash_table(hash_table_entries)
+        .with_block_table(block_table_entries)
+        .build(orig_input)
+        .unwrap();
     Ok((tail, mpq))
 }
 
-/// Convenience function to read a file to parse, mostly for testing.
+/// Convenience fMPQHashTableEntryunction to read a file to parse, mostly for testing.
 pub fn read_file(path: &str) -> Vec<u8> {
     let mut f = File::open(path).unwrap();
     let mut buffer: Vec<u8> = vec![];
