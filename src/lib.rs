@@ -10,7 +10,9 @@ use parser::MPQBlockTableEntry;
 use parser::MPQHashType;
 use thiserror::Error;
 
+pub mod builder;
 pub mod parser;
+pub use builder::MPQBuilder;
 use compress::zlib;
 pub use parser::MPQFileHeader;
 pub use parser::MPQHashTableEntry;
@@ -43,28 +45,11 @@ pub struct MPQ {
     pub user_data: Option<MPQUserData>,
     pub hash_table_entries: Vec<MPQHashTableEntry>,
     pub block_table_entries: Vec<MPQBlockTableEntry>,
-}
-
-#[derive(Debug)]
-pub struct MPQBuilder {
-    pub archive_header: Option<MPQFileHeader>,
-    pub user_data: Option<MPQUserData>,
-    pub hash_table_entries: Vec<MPQHashTableEntry>,
-    pub block_table_entries: Vec<MPQBlockTableEntry>,
     pub encryption_table: HashMap<u32, u32>,
 }
 
-impl MPQBuilder {
-    pub fn new() -> Self {
-        Self {
-            archive_header: None,
-            user_data: None,
-            hash_table_entries: vec![],
-            block_table_entries: vec![],
-            encryption_table: Self::prepare_encryption_table(),
-        }
-    }
-
+impl MPQ {
+    /// Creates the encryption table
     fn prepare_encryption_table() -> HashMap<u32, u32> {
         let mut seed: u32 = 0x00100001;
         let mut res = HashMap::new();
@@ -87,13 +72,18 @@ impl MPQBuilder {
 
     /// `_hash` on MPyQ
     /// Hash a string using MPQ's hash function
-    pub fn mpq_string_hash(&self, location: &str, hash_type: MPQHashType) -> u32 {
+    /// This function doesn't use self as the Builder also needs to access the same functionality.
+    pub fn mpq_string_hash(
+        encryption_table: &HashMap<u32, u32>,
+        location: &str,
+        hash_type: MPQHashType,
+    ) -> u32 {
         let mut seed1: u64 = 0x7FED7FEDu64;
         let mut seed2: u64 = 0xEEEEEEEEu64;
         for ch in location.to_uppercase().chars() {
             let ch_ord: u32 = ch.into();
             let hash_type_idx: u32 = hash_type.try_into().unwrap();
-            let value = match self.encryption_table.get(&((hash_type_idx << 8) + ch_ord)) {
+            let value = match encryption_table.get(&((hash_type_idx << 8) + ch_ord)) {
                 Some(val) => val,
                 None => panic!(
                     "Couldn't find index in map for: {}",
@@ -103,18 +93,21 @@ impl MPQBuilder {
             seed1 = (*value as u64 ^ (seed1 + seed2)) & 0xFFFFFFFFu64;
             seed2 = ch_ord as u64 + seed1 + seed2 + (seed2 << 5) + 3 & 0xFFFFFFFFu64;
         }
+        tracing::trace!("Returning {} for location: {}", (seed1 as u32), location);
         seed1 as u32
     }
 
     /// Get the hash table entry corresponding to a given filename.
+    /// This function doesn't use self as the Builder also needs to access the same functionality.
     pub fn get_hash_table_entry(&self, filename: &str) -> Option<MPQHashTableEntry> {
-        let hash_a = self.mpq_string_hash(filename, MPQHashType::HashA);
-        let hash_b = self.mpq_string_hash(filename, MPQHashType::HashB);
+        let hash_a = Self::mpq_string_hash(&self.encryption_table, filename, MPQHashType::HashA);
+        let hash_b = Self::mpq_string_hash(&self.encryption_table, filename, MPQHashType::HashB);
         for entry in &self.hash_table_entries {
             if entry.hash_a == hash_a && entry.hash_b == hash_b {
                 return Some(entry.clone());
             }
         }
+        tracing::warn!("Unable to find hash table entry for {}", filename);
         None
     }
 
@@ -143,25 +136,22 @@ impl MPQBuilder {
         filename: &str,
         force_decompress: bool,
         orig_input: &'a [u8],
-    ) -> IResult<&'a [u8], Option<Vec<u8>>> {
+    ) -> IResult<&'a [u8], Vec<u8>> {
+        let mut res = vec![];
         let hash_entry = match self.get_hash_table_entry(filename) {
             Some(val) => val,
-            None => return Ok((orig_input, None)),
+            None => return Ok((orig_input, res)),
         };
         let block_entry = self.block_table_entries[hash_entry.block_table_index as usize].clone();
         // Read the block
         if block_entry.flags & MPQ_FILE_EXISTS == 0 {
-            return Ok((orig_input, None));
+            return Ok((orig_input, res));
         }
         if block_entry.archived_size == 0 {
-            return Ok((orig_input, None));
+            return Ok((orig_input, res));
         }
-        let header_offset = match &self.archive_header {
-            Some(val) => val.offset,
-            None => 0usize,
-        };
-        let offset = block_entry.offset as usize + header_offset;
-        let (input, file_data) =
+        let offset = block_entry.offset as usize + self.archive_header.offset;
+        let (tail, file_data) =
             dbg_dmp(take(block_entry.archived_size), "file_data")(&orig_input[offset..])?;
 
         if block_entry.flags & MPQ_FILE_ENCRYPTED != 0 {
@@ -174,22 +164,71 @@ impl MPQBuilder {
                 || block_entry.size > block_entry.archived_size
             {
                 let (_tail, decompressed_data) = Self::decompress(file_data)?;
-                return Ok((orig_input, Some(decompressed_data)));
+                return Ok((tail, decompressed_data));
+            } else {
+                // File consists of many sectors. They all need to be
+                // decompressed separately and united.
+                let sector_size = 512 << self.archive_header.sector_size_shift;
+                let mut sectors =
+                    (block_entry.size as f32 / sector_size as f32).floor() as usize + 1usize;
+                let crc = if block_entry.flags & MPQ_FILE_SECTOR_CRC != 0 {
+                    sectors += 1;
+                    true
+                } else {
+                    false
+                };
+                let mut positions: Vec<usize> = vec![];
+                let mut position_file_index = &file_data[..4 * (sectors + 1)];
+                for _ in 0..sectors + 1 {
+                    // Note: MPyQ format for this is a list of '<I'
+                    // as long as there are sectors + 1
+                    // `'<%dI' % (sectors + 1)` (Not to confuse the `d` with
+                    // double, it's for the `%` format operator.
+                    let (new_pos_idx, position) =
+                        dbg_dmp(u32(LITTLE_ENDIAN), "positions")(position_file_index)?;
+                    positions.push(position as usize);
+                    position_file_index = new_pos_idx;
+                }
+                let mut sector_bytes_left = block_entry.size as usize;
+                let mut total_sectors = positions.len() - 1;
+                if crc {
+                    total_sectors -= 1;
+                }
+
+                for i in 0..total_sectors {
+                    let mut sector = file_data[positions[i]..positions[i + 1]].to_vec();
+                    if block_entry.flags & MPQ_FILE_COMPRESS != 0 && force_decompress
+                        || sector_bytes_left as usize > sector.len()
+                    {
+                        let (_tail, mut decompressed_sector) =
+                            Self::decompress(&file_data[positions[i]..positions[i + 1]])?;
+                        res.append(&mut decompressed_sector);
+                    } else {
+                        res.append(&mut sector);
+                    }
+
+                    sector_bytes_left -= sector.len();
+                }
+                return Ok((tail, res));
             }
         }
-        Ok((orig_input, None))
+        Ok((tail, res))
     }
 
     /// `_decrypt` on MPyQ
     /// Decrypt hash or block table or a sector.
-    pub fn mpq_data_decrypt<'a>(&'a self, data: &'a [u8], key: u32) -> IResult<&'a [u8], Vec<u8>> {
+    pub fn mpq_data_decrypt<'a>(
+        encryption_table: &'a HashMap<u32, u32>,
+        data: &'a [u8],
+        key: u32,
+    ) -> IResult<&'a [u8], Vec<u8>> {
         let mut seed1 = key as u64;
         let mut seed2 = 0xEEEEEEEEu64;
         let mut res = vec![];
 
         for i in 0..(data.len() as f32 / 4f32).floor() as usize {
             let encryption_table_value =
-                match self.encryption_table.get(&(0x400 + (seed1 & 0xFF) as u32)) {
+                match encryption_table.get(&(0x400 + (seed1 & 0xFF) as u32)) {
                     Some(val) => *val as u64,
                     None => {
                         tracing::error!(
@@ -217,42 +256,34 @@ impl MPQBuilder {
         Ok((data, res))
     }
 
-    /// Sets the archive header field
-    pub fn with_archive_header(mut self, archive_header: MPQFileHeader) -> Self {
-        self.archive_header = Some(archive_header);
-        self
-    }
-
-    /// Sets the user data field
-    pub fn with_user_data(mut self, user_data: Option<MPQUserData>) -> Self {
-        self.user_data = user_data;
-        self
-    }
-
-    /// Sets the hash table entries
-    pub fn with_hash_table(mut self, entries: Vec<MPQHashTableEntry>) -> Self {
-        self.hash_table_entries = entries;
-        self
-    }
-
-    /// Sets the block table entries
-    pub fn with_block_table(mut self, entries: Vec<MPQBlockTableEntry>) -> Self {
-        self.block_table_entries = entries;
-        self
-    }
-
-    pub fn build(self, _orig_input: &[u8]) -> Result<MPQ, String> {
-        let archive_header = self
-            .archive_header
-            .ok_or(String::from("Missing user data"))?;
-        let user_data = self.user_data;
-        let hash_table_entries = self.hash_table_entries;
-        let block_table_entries = self.block_table_entries;
-        Ok(MPQ {
-            archive_header,
-            user_data,
-            hash_table_entries,
-            block_table_entries,
-        })
+    pub fn get_files(&self, orig_input: &[u8]) -> Vec<(Vec<u8>, usize)> {
+        let mut res: Vec<(Vec<u8>, usize)> = vec![];
+        let files: Vec<String> = match self.read_file("(listfile)", false, orig_input) {
+            Ok((_tail, file_buffer)) => {
+                tracing::debug!("Successfully read '(listfile)' sector: {:?}", file_buffer);
+                match std::str::from_utf8(&file_buffer) {
+                    Ok(val) => val.lines().map(|x| x.to_string()).collect(),
+                    Err(err) => {
+                        panic!("Invalid UTF-8 sequence: {}", err);
+                    }
+                }
+            }
+            Err(err) => {
+                panic!("Unable to read '(listfile)' sector: {:?}", err);
+            }
+        };
+        for filename in files {
+            let hash_entry = match self.get_hash_table_entry(&filename) {
+                Some(val) => val,
+                None => {
+                    tracing::warn!("Unable to find hash entry for filename: {:?}", filename);
+                    continue;
+                }
+            };
+            let block_entry = &self.block_table_entries[hash_entry.block_table_index as usize];
+            tracing::debug!("{} {1:>8} bytes", filename, block_entry.size as usize);
+            res.push((filename.into(), block_entry.size as usize));
+        }
+        res
     }
 }
