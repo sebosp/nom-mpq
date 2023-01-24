@@ -250,7 +250,7 @@ impl MPQ {
             seed2 = value + seed2 + (seed2 << 5) + 3 & 0xFFFFFFFFu64;
 
             // pack in little endian
-            res.append(&mut value.to_le_bytes().to_vec());
+            res.append(&mut (value as u32).to_le_bytes().to_vec());
         }
 
         Ok((data, res))
