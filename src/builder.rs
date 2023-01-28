@@ -54,10 +54,11 @@ impl MPQBuilder {
     }
 
     /// TODO: data may have less than 8 elements
-    #[tracing::instrument(level = "trace", skip(self, data), fields(data = to_hex_with_no_context(&data[0..8])))]
+    #[tracing::instrument(level = "trace", skip(self, data))]
     pub fn mpq_data_decrypt<'a>(&'a self, data: &'a [u8], key: u32) -> IResult<&'a [u8], Vec<u8>> {
+        tracing::debug!("Encrypted: {:?}", to_hex_with_no_context(&data[0..16]));
         let (tail, res) = MPQ::mpq_data_decrypt(&self.encryption_table, data, key)?;
-        tracing::debug!("Decrypted to: {:?}", to_hex_with_no_context(&res));
+        tracing::debug!("Decrypted: {:?}", to_hex_with_no_context(&res));
         Ok((tail, res))
     }
 
