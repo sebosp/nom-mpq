@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use nom::bytes::complete::take;
 use nom::error::dbg_dmp;
-use nom::number::complete::{u32, u8};
+use nom::number::complete::{i32, u32, u8};
 use nom::IResult;
 use parser::MPQBlockTableEntry;
 use parser::MPQHashType;
@@ -222,35 +222,45 @@ impl MPQ {
         data: &'a [u8],
         key: u32,
     ) -> IResult<&'a [u8], Vec<u8>> {
-        let mut seed1 = key as u64;
-        let mut seed2 = 0xEEEEEEEEu64;
+        let mut seed1 = key as i64;
+        let mut seed2 = 0xEEEEEEEEi64;
         let mut res = vec![];
 
         for i in 0..(data.len() as f32 / 4f32).floor() as usize {
+            tracing::debug!(
+                "[{i}/{}], seed1: {seed1}, seed2: {seed2}, result: {}",
+                (data.len() as f32 / 4f32).floor(),
+                parser::to_hex_with_no_context(&res),
+            );
             let encryption_table_value =
-                match encryption_table.get(&(0x400 + (seed1 & 0xFF) as u32)) {
-                    Some(val) => *val as u64,
+                match encryption_table.get(&(0x400 + (seed1 as u32 & 0xFF))) {
+                    Some(val) => *val as i64,
                     None => {
                         tracing::error!(
                             "Encryption table value not found for: {}",
-                            (0x400 + (seed1 & 0xFF) as u32)
+                            (0x400 + (seed1 & 0xFF) as i32)
                         );
                         continue;
                     }
                 };
             seed2 += encryption_table_value;
-            seed2 &= 0xFFFFFFFFu64;
+            seed2 &= 0xFFFFFFFFi64;
             let (_tail, value) =
-                dbg_dmp(u32(LITTLE_ENDIAN), "encrypted_value")(&data[i * 4..i * 4 + 4])?;
-            let mut value = value as u64;
-            value = (value as u64 ^ (seed1 + seed2)) & 0xFFFFFFFFu64;
+                dbg_dmp(i32(LITTLE_ENDIAN), "encrypted_value")(&data[i * 4..i * 4 + 4])?;
+            let mut value = value as i64;
+            value = (value as i64 ^ (seed1 + seed2)) & 0xFFFFFFFFi64;
 
             seed1 = ((!seed1 << 0x15) + 0x11111111) | (seed1 >> 0x0B);
             seed1 &= 0xFFFFFFFF;
-            seed2 = value + seed2 + (seed2 << 5) + 3 & 0xFFFFFFFFu64;
+            seed2 = value + seed2 + (seed2 << 5) + 3 & 0xFFFFFFFFi64;
+            tracing::debug!(
+                "value: {}",
+                parser::to_hex_with_no_context(&(value as i32).to_le_bytes().to_vec()[..]),
+            );
+            let mut le_packed_value = (value as i32).to_le_bytes().to_vec();
 
             // pack in little endian
-            res.append(&mut (value as u32).to_le_bytes().to_vec());
+            res.append(&mut le_packed_value);
         }
 
         Ok((data, res))
