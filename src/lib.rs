@@ -6,7 +6,6 @@ use nom::bytes::complete::take;
 use nom::error::dbg_dmp;
 use nom::number::complete::{i32, u32, u8};
 use nom::IResult;
-use parser::MPQBlockTableEntry;
 use parser::MPQHashType;
 use thiserror::Error;
 
@@ -14,6 +13,7 @@ pub mod builder;
 pub mod parser;
 pub use builder::MPQBuilder;
 use compress::zlib;
+pub use parser::MPQBlockTableEntry;
 pub use parser::MPQFileHeader;
 pub use parser::MPQHashTableEntry;
 pub use parser::MPQUserData;
@@ -104,6 +104,7 @@ impl MPQ {
         let hash_b = Self::mpq_string_hash(&self.encryption_table, filename, MPQHashType::HashB);
         for entry in &self.hash_table_entries {
             if entry.hash_a == hash_a && entry.hash_b == hash_b {
+                tracing::debug!("Found filename: {}, as entry: {:?}", filename, entry);
                 return Some(entry.clone());
             }
         }
@@ -116,13 +117,20 @@ impl MPQ {
         let mut data = vec![];
         let (tail, compression_type) = dbg_dmp(u8, "compression_type")(input)?;
         match compression_type {
-            COMPRESSION_PLAINTEXT => data = tail[..].to_vec(),
+            COMPRESSION_PLAINTEXT => {
+                tracing::debug!("Plaintext (no compression)");
+                data = tail[..].to_vec()
+            }
             COMPRESSION_ZLIB => {
-                let _ = zlib::Decoder::new(tail).read_to_end(&mut data).unwrap();
+                tracing::debug!("Attempting ZLIB compression",);
+                let mut d = zlib::Decoder::new(std::io::BufReader::new(tail));
+
+                let _ = d.read_to_end(&mut data).unwrap();
             }
             COMPRESSION_BZ2 => {
-                let mut decompressor = bzip2::Decompress::new(false);
-                let _ = decompressor.decompress(tail, &mut data).unwrap();
+                tracing::debug!("Attempting BZ2 compression",);
+                let mut decompressor = bzip2::read::BzDecoder::new(tail);
+                let _ = decompressor.read_to_end(&mut data).unwrap();
             }
             _ => panic!("Unsupported compression type: {}", compression_type),
         };
@@ -131,6 +139,7 @@ impl MPQ {
     }
 
     /// Read a file from the MPQ archive.
+    #[tracing::instrument(level = "debug", skip(self, orig_input))]
     pub fn read_file<'a>(
         &'a self,
         filename: &str,
@@ -143,26 +152,35 @@ impl MPQ {
             None => return Ok((orig_input, res)),
         };
         let block_entry = self.block_table_entries[hash_entry.block_table_index as usize].clone();
+        tracing::debug!("block_entry {:?}", block_entry);
         // Read the block
         if block_entry.flags & MPQ_FILE_EXISTS == 0 {
+            tracing::debug!("file is marked as deleted. Returning empty content");
             return Ok((orig_input, res));
         }
         if block_entry.archived_size == 0 {
+            tracing::debug!("File is zero size. Returning empty content");
             return Ok((orig_input, res));
         }
         let offset = block_entry.offset as usize + self.archive_header.offset;
         let (tail, file_data) =
             dbg_dmp(take(block_entry.archived_size), "file_data")(&orig_input[offset..])?;
 
+        tracing::debug!(
+            "Block table data: {}",
+            parser::to_hex_with_no_context(&file_data)
+        );
         if block_entry.flags & MPQ_FILE_ENCRYPTED != 0 {
             panic!("Encryption is not supported");
         }
         if block_entry.flags & MPQ_FILE_SINGLE_UNIT != 0 {
+            tracing::debug!("File sector contains a single unit",);
             // Single unit files only need to be decompressed, but
             // compression only happens when at least one byte is gained.
             if block_entry.flags & MPQ_FILE_COMPRESS != 0 && force_decompress
                 || block_entry.size > block_entry.archived_size
             {
+                tracing::debug!("File needs to be decompressed",);
                 let (_tail, decompressed_data) = Self::decompress(file_data)?;
                 return Ok((tail, decompressed_data));
             } else {
@@ -227,7 +245,7 @@ impl MPQ {
         let mut res = vec![];
 
         for i in 0..(data.len() as f32 / 4f32).floor() as usize {
-            tracing::debug!(
+            tracing::trace!(
                 "[{i}/{}], seed1: {seed1}, seed2: {seed2}, result: {}",
                 (data.len() as f32 / 4f32).floor(),
                 parser::to_hex_with_no_context(&res),
@@ -253,7 +271,7 @@ impl MPQ {
             seed1 = ((!seed1 << 0x15) + 0x11111111) | (seed1 >> 0x0B);
             seed1 &= 0xFFFFFFFF;
             seed2 = value + seed2 + (seed2 << 5) + 3 & 0xFFFFFFFFi64;
-            tracing::debug!(
+            tracing::trace!(
                 "value: {}",
                 parser::to_hex_with_no_context(&(value as i32).to_le_bytes().to_vec()[..]),
             );
@@ -270,7 +288,10 @@ impl MPQ {
         let mut res: Vec<(Vec<u8>, usize)> = vec![];
         let files: Vec<String> = match self.read_file("(listfile)", false, orig_input) {
             Ok((_tail, file_buffer)) => {
-                tracing::debug!("Successfully read '(listfile)' sector: {:?}", file_buffer);
+                tracing::debug!(
+                    "Successfully read '(listfile)' sector: {:?}",
+                    parser::to_hex_with_no_context(&file_buffer)
+                );
                 match std::str::from_utf8(&file_buffer) {
                     Ok(val) => val.lines().map(|x| x.to_string()).collect(),
                     Err(err) => {
