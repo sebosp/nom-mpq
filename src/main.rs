@@ -12,6 +12,12 @@ enum Commands {
         #[arg(short, long)]
         name: String,
     },
+    /// Extract a file from the archive
+    ExtractHeader {
+        /// Extract a specific
+        #[arg(short, long)]
+        name: String,
+    },
 }
 
 #[derive(Parser)]
@@ -49,5 +55,19 @@ fn main() {
             }
             let _ = std::io::stdout().flush();
         }
+        Commands::ExtractHeader { name } => match name.as_ref() {
+            "user_data.content" => {
+                let user_data = mpq
+                    .user_data
+                    .as_ref()
+                    .expect("Unable to get user data, not provided in MPQ Archive");
+                for word in &user_data.content {
+                    let bytes = word.to_le_bytes();
+                    let _ = std::io::stdout().write_all(&bytes);
+                }
+                let _ = std::io::stdout().flush();
+            }
+            _ => eprintln!("Unknown header"),
+        },
     }
 }
