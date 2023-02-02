@@ -1,6 +1,7 @@
 use clap::{Parser, Subcommand};
 use nom_mpq::*;
 use std::io::Write;
+use tracing_subscriber;
 
 #[derive(Subcommand)]
 enum Commands {
@@ -43,6 +44,7 @@ struct Cli {
 }
 
 fn main() {
+    tracing_subscriber::fmt::init();
     let cli = Cli::parse();
     match &cli.command {
         Commands::Generate { output } => {
