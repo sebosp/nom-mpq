@@ -11,6 +11,7 @@ use thiserror::Error;
 
 pub mod builder;
 pub mod parser;
+pub mod s2protocol;
 pub use builder::MPQBuilder;
 use compress::zlib;
 pub use parser::MPQBlockTableEntry;
@@ -140,7 +141,7 @@ impl MPQ {
 
     /// Read a file from the MPQ archive.
     #[tracing::instrument(level = "debug", skip(self, orig_input))]
-    pub fn read_file<'a>(
+    pub fn read_mpq_file_sector<'a>(
         &'a self,
         filename: &str,
         force_decompress: bool,
@@ -166,10 +167,7 @@ impl MPQ {
         let (tail, file_data) =
             dbg_dmp(take(block_entry.archived_size), "file_data")(&orig_input[offset..])?;
 
-        tracing::debug!(
-            "Block table data: {}",
-            parser::to_hex_with_no_context(&file_data)
-        );
+        tracing::debug!("Block table data: {}", parser::peek_hex(&file_data));
         if block_entry.flags & MPQ_FILE_ENCRYPTED != 0 {
             panic!("Encryption is not supported");
         }
@@ -245,11 +243,6 @@ impl MPQ {
         let mut res = vec![];
 
         for i in 0..(data.len() as f32 / 4f32).floor() as usize {
-            tracing::trace!(
-                "[{i}/{}], seed1: {seed1}, seed2: {seed2}, result: {}",
-                (data.len() as f32 / 4f32).floor(),
-                parser::to_hex_with_no_context(&res),
-            );
             let encryption_table_value =
                 match encryption_table.get(&(0x400 + (seed1 as u32 & 0xFF))) {
                     Some(val) => *val as i64,
@@ -271,10 +264,6 @@ impl MPQ {
             seed1 = ((!seed1 << 0x15) + 0x11111111) | (seed1 >> 0x0B);
             seed1 &= 0xFFFFFFFF;
             seed2 = value + seed2 + (seed2 << 5) + 3 & 0xFFFFFFFFi64;
-            tracing::trace!(
-                "value: {}",
-                parser::to_hex_with_no_context(&(value as i32).to_le_bytes().to_vec()[..]),
-            );
             let mut le_packed_value = (value as i32).to_le_bytes().to_vec();
 
             // pack in little endian
@@ -284,13 +273,13 @@ impl MPQ {
         Ok((data, res))
     }
 
-    pub fn get_files(&self, orig_input: &[u8]) -> Vec<(Vec<u8>, usize)> {
-        let mut res: Vec<(Vec<u8>, usize)> = vec![];
-        let files: Vec<String> = match self.read_file("(listfile)", false, orig_input) {
+    pub fn get_files(&self, orig_input: &[u8]) -> Vec<(String, usize)> {
+        let mut res: Vec<(String, usize)> = vec![];
+        let files: Vec<String> = match self.read_mpq_file_sector("(listfile)", false, orig_input) {
             Ok((_tail, file_buffer)) => {
                 tracing::debug!(
                     "Successfully read '(listfile)' sector: {:?}",
-                    parser::to_hex_with_no_context(&file_buffer)
+                    parser::peek_hex(&file_buffer)
                 );
                 match std::str::from_utf8(&file_buffer) {
                     Ok(val) => val.lines().map(|x| x.to_string()).collect(),
@@ -313,7 +302,7 @@ impl MPQ {
             };
             let block_entry = &self.block_table_entries[hash_entry.block_table_index as usize];
             tracing::debug!("{} {1:>8} bytes", filename, block_entry.size as usize);
-            res.push((filename.into(), block_entry.size as usize));
+            res.push((filename, block_entry.size as usize));
         }
         res
     }

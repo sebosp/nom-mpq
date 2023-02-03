@@ -1,6 +1,6 @@
 //! The MPQ Builder.
 //! Allows progressively creating the MPQ as the file is read.
-use super::parser::to_hex_with_no_context;
+use super::parser::peek_hex;
 use super::{MPQBlockTableEntry, MPQFileHeader, MPQHashTableEntry, MPQHashType, MPQUserData, MPQ};
 use nom::IResult;
 use std::collections::HashMap;
@@ -56,9 +56,9 @@ impl MPQBuilder {
     /// TODO: data may have less than 8 elements
     #[tracing::instrument(level = "trace", skip(self, data))]
     pub fn mpq_data_decrypt<'a>(&'a self, data: &'a [u8], key: u32) -> IResult<&'a [u8], Vec<u8>> {
-        tracing::debug!("Encrypted: {:?}", to_hex_with_no_context(&data[0..16]));
+        tracing::trace!("Encrypted: {:?}", peek_hex(&data));
         let (tail, res) = MPQ::mpq_data_decrypt(&self.encryption_table, data, key)?;
-        tracing::debug!("Decrypted: {:?}", to_hex_with_no_context(&res));
+        tracing::trace!("Decrypted: {:?}", peek_hex(&res));
         Ok((tail, res))
     }
 
