@@ -27,6 +27,17 @@ pub struct MPQBlockTableEntry {
 }
 
 impl MPQBlockTableEntry {
+    /// This method is not related to parsing but for testing, maybe we should consider further
+    /// splitting this into a MPQBlockTableEntryParser, maybe overkill.
+    pub fn new(offset: u32, archived_size: u32, size: u32, flags: u32) -> Self {
+        Self {
+            offset,
+            archived_size,
+            size,
+            flags,
+        }
+    }
+
     /// Parses all the fields in the expected order
     pub fn parse(input: &[u8]) -> IResult<&[u8], Self> {
         let (tail, offset) = Self::parse_offset(input)?;

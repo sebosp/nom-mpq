@@ -8,7 +8,7 @@ use nom::number::complete::{i16, i64};
 use nom::*;
 
 /// Extended fields only present in the Burning Crusade format and later:
-#[derive(Debug, PartialEq, Default)]
+#[derive(Debug, PartialEq, Default, Clone, Copy)]
 pub struct MPQFileHeaderExt {
     extended_block_table_offset: i64,
     hash_table_offset_high: i16,

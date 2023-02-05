@@ -40,6 +40,24 @@ pub struct MPQHashTableEntry {
 }
 
 impl MPQHashTableEntry {
+    /// This method is not related to parsing but for testing, maybe we should consider further
+    /// splitting this into a MPQHashTableEntryParser, maybe overkill.
+    pub fn new(
+        hash_a: u32,
+        hash_b: u32,
+        locale: u16,
+        platform: u16,
+        block_table_index: u32,
+    ) -> Self {
+        Self {
+            hash_a,
+            hash_b,
+            locale,
+            platform,
+            block_table_index,
+        }
+    }
+
     /// Parses all the fields in the expected order
     pub fn parse(input: &[u8]) -> IResult<&[u8], Self> {
         let (tail, hash_a) = Self::parse_hash_a(input)?;

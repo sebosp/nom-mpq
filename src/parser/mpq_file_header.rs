@@ -9,7 +9,7 @@ use nom::number::complete::{u16, u32};
 use nom::*;
 
 /// The MPQ File Header
-#[derive(Debug, Default, PartialEq)]
+#[derive(Debug, Default, PartialEq, Clone, Copy)]
 pub struct MPQFileHeader {
     pub header_size: u32,
     pub archive_size: u32,
