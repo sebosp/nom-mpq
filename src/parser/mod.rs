@@ -101,9 +101,14 @@ pub fn peek_hex(data: &[u8]) -> String {
     let mut v = Vec::with_capacity(data.len() * 3);
     for chunk in data.chunks(chunk_size) {
         v.push(b'[');
+        let mut even_space = false;
         for &byte in chunk {
             v.push(CHARS[(byte >> 4) as usize]);
             v.push(CHARS[(byte & 0xf) as usize]);
+            if even_space {
+                v.push(b' ');
+            }
+            even_space = !even_space;
         }
         if chunk_size > chunk.len() {
             for _j in 0..(chunk_size - chunk.len()) {
