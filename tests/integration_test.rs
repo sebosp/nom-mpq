@@ -42,6 +42,7 @@ fn mpyq_test_encryption_table() {
     assert_eq!(builder.encryption_table.len(), 1280usize);
 }
 
+#[test_log::test]
 fn mpyq_test_file_list() {
     let file_path = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/mpyq-test.SC2Replay");
     let file_contents = parser::read_file(file_path);
@@ -49,14 +50,14 @@ fn mpyq_test_file_list() {
     assert_eq!(
         mpq.get_files(&file_contents),
         vec![
-            (b"replay.attributes.events".to_vec(), 1usize),
-            (b"replay.details".to_vec(), 1usize),
-            (b"replay.game.events".to_vec(), 1usize),
-            (b"replay.initData".to_vec(), 1usize),
-            (b"replay.load.info".to_vec(), 1usize),
-            (b"replay.message.events".to_vec(), 1usize),
-            (b"replay.smartcam.events".to_vec(), 1usize),
-            (b"replay.sync.events".to_vec(), 1usize),
+            ("replay.attributes.events".to_string(), 2400usize),
+            ("replay.details".to_string(), 890usize),
+            ("replay.game.events".to_string(), 479869usize),
+            ("replay.initData".to_string(), 1257usize),
+            ("replay.load.info".to_string(), 97usize),
+            ("replay.message.events".to_string(), 334usize),
+            ("replay.smartcam.events".to_string(), 12431usize),
+            ("replay.sync.events".to_string(), 1970usize),
         ]
     );
 }
@@ -115,5 +116,49 @@ fn mpyq_test_hash_table() {
     expected_entries.push(MPQHashTableEntry::new(
         0x31952289, 0x6A5FFAA3, 0x0000, 0x0000, 0x00000003,
     ));
-    assert_eq!(mpq.hash_table_entries, expected_entries,);
+    assert_eq!(mpq.hash_table_entries, expected_entries);
+}
+
+#[test_log::test]
+fn mpyq_test_block_table() {
+    let file_path = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/mpyq-test.SC2Replay");
+    let file_contents = parser::read_file(file_path);
+    let (_input, mpq) = parser::parse(&file_contents).unwrap();
+    let mut expected_entries: Vec<MPQBlockTableEntry> = vec![];
+    expected_entries.push(MPQBlockTableEntry::new(0x0000002C, 727, 890, 0x81000200u32));
+    expected_entries.push(MPQBlockTableEntry::new(
+        0x00000303,
+        801,
+        1257,
+        0x81000200u32,
+    ));
+    expected_entries.push(MPQBlockTableEntry::new(
+        0x00000624,
+        194096,
+        479869,
+        0x81000200u32,
+    ));
+    expected_entries.push(MPQBlockTableEntry::new(0x0002FC54, 226, 334, 0x81000200u32));
+    expected_entries.push(MPQBlockTableEntry::new(0x0002FD36, 97, 97, 0x81000200u32));
+    expected_entries.push(MPQBlockTableEntry::new(
+        0x0002FD97,
+        1323,
+        1970,
+        0x81000200u32,
+    ));
+    expected_entries.push(MPQBlockTableEntry::new(
+        0x000302C2,
+        6407,
+        12431,
+        0x81000200u32,
+    ));
+    expected_entries.push(MPQBlockTableEntry::new(
+        0x00031BC9,
+        533,
+        2400,
+        0x81000200u32,
+    ));
+    expected_entries.push(MPQBlockTableEntry::new(0x00031DDE, 120, 164, 0x81000200u32));
+    expected_entries.push(MPQBlockTableEntry::new(0x00031E56, 254, 288, 0x81000200u32));
+    assert_eq!(mpq.block_table_entries, expected_entries);
 }
