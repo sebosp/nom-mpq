@@ -1,4 +1,5 @@
-//! Nom Parsing the MPQ file
+//! Nom Parsing the MPQ file format
+//!
 //! NOTES:
 //! - All numbers in the MoPaQ format are in little endian byte order
 //! - Signed numbers use the two's complement system.

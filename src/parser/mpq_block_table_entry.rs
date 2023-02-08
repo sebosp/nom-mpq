@@ -11,7 +11,7 @@
 //! - BlockSize, FileSize, and Flags zero.
 //! The block table is encrypted, using the hash of "(block table)" as the key.
 //! NOTES:
-//! - MPyQ uses struct_format: '4I'
+//! - MPyQ uses struct_format: `'4I'`
 
 use super::LITTLE_ENDIAN;
 use nom::error::dbg_dmp;
@@ -55,20 +55,23 @@ impl MPQBlockTableEntry {
         ))
     }
 
-    /// Offset 0x00: int32 BlockOffset
+    /// `Offset 0x00`: int32 BlockOffset
+    ///
     /// Offset of the beginning of the block, relative to the beginning of the
     /// archive.
     pub fn parse_offset(input: &[u8]) -> IResult<&[u8], u32> {
         dbg_dmp(u32(LITTLE_ENDIAN), "offset")(input)
     }
 
-    /// Offset 0x04: int32 BlockSize
+    /// `Offset 0x04`: int32 BlockSize
+    ///
     /// Size of the block in the archive.
     pub fn parse_archived_size(input: &[u8]) -> IResult<&[u8], u32> {
         dbg_dmp(u32(LITTLE_ENDIAN), "archive_size")(input)
     }
 
-    /// Offset 0x08: int32 FileSize
+    /// `Offset 0x08`: int32 FileSize
+    ///
     /// Size of the file data stored in the block. Only valid if the block is
     /// a file; otherwise meaningless, and should be 0.
     /// If the file is compressed, this is the size of the uncompressed
@@ -77,28 +80,29 @@ impl MPQBlockTableEntry {
         dbg_dmp(u32(LITTLE_ENDIAN), "size")(input)
     }
 
-    /// Offset 0x0c: int32 Flags
+    /// `Offset 0x0c`: int32 Flags
+    ///
     /// Bit mask of the flags for the block.
     /// The following values are conclusively identified:
-    /// - 0x80000000 Block is a file, and follows the file data format;
+    /// - `0x80000000` Block is a file, and follows the file data format;
     ///              otherwise, block is free space or unused.
     ///              If the block is not a file, all other flags should be
     ///              cleared, and FileSize should be 0.
-    /// - 0x04000000 File has checksums for each sector (explained in the
+    /// - `0x04000000` File has checksums for each sector (explained in the
     ///              File Data section). Ignored if file is not compressed
     ///              or imploded.
-    /// - 0x02000000 File is a deletion marker, indicating that the file no
+    /// - `0x02000000` File is a deletion marker, indicating that the file no
     ///              longer exists. This is used to allow patch archives to
     ///              delete files present in lower-priority archives in the
     ///              search chain.
-    /// - 0x01000000 File is stored as a single unit, rather than split into
+    /// - `0x01000000` File is stored as a single unit, rather than split into
     ///              sectors.
-    /// - 0x00020000 The file's encryption key is adjusted by the block offset
+    /// - `0x00020000` The file's encryption key is adjusted by the block offset
     ///              and file size (explained in detail in the File Data
     ///              section). File must be encrypted.
-    /// - 0x00010000 File is encrypted.
-    /// - 0x00000200 File is compressed. File cannot be imploded.
-    /// - 0x00000100 File is imploded. File cannot be compressed.
+    /// - `0x00010000` File is encrypted.
+    /// - `0x00000200` File is compressed. File cannot be imploded.
+    /// - `0x00000100` File is imploded. File cannot be compressed.
     pub fn parse_flags(input: &[u8]) -> IResult<&[u8], u32> {
         dbg_dmp(u32(LITTLE_ENDIAN), "flags")(input)
     }
