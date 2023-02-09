@@ -21,8 +21,8 @@
 //! hash table, and will fail or crash otherwise.
 //! NOTES:
 //! - MPyQ uses struct_format: '2I2HI'
-//!   - The format above claims the [`platform`] is a u16.
-//!   - The devklog.net website claims the [`platform`] field is u8
+//!   - The format above claims the [`MPQHashTableEntry.platform`] is a u16.
+//!   - The devklog.net website claims the [`MPQHashTableEntry.platform`] field is u8
 //!   - In this implementation the u16 MPyQ version is honored.
 
 use super::LITTLE_ENDIAN;
@@ -77,19 +77,19 @@ impl MPQHashTableEntry {
         ))
     }
 
-    /// Offset 0x00: int32 FilePathHashA
+    /// `Offset 0x00`: int32 FilePathHashA
     /// The hash of the file path, using method A.
     pub fn parse_hash_a(input: &[u8]) -> IResult<&[u8], u32> {
         dbg_dmp(u32(LITTLE_ENDIAN), "hash_a")(input)
     }
 
-    /// Offset 0x04: int32 FilePathHashB
+    /// `Offset 0x04`: int32 FilePathHashB
     /// The hash of the file path, using method B.
     pub fn parse_hash_b(input: &[u8]) -> IResult<&[u8], u32> {
         dbg_dmp(u32(LITTLE_ENDIAN), "hash_b")(input)
     }
 
-    /// Offset 0x08h: int16 Language
+    /// `Offset 0x08`: int16 Language
     /// The language of the file. This is a Windows LANGID data type, and uses
     /// the same values.
     /// 0 indicates the default language (American English), or that the file
@@ -98,14 +98,14 @@ impl MPQHashTableEntry {
         dbg_dmp(u16(LITTLE_ENDIAN), "locale")(input)
     }
 
-    /// Offset 0x0a: int16 Platform
+    /// `Offset 0x0a`: int16 Platform
     /// The platform the file is used for. 0 indicates the default platform.
     /// No other values have been observed.
     pub fn parse_platform(input: &[u8]) -> IResult<&[u8], u16> {
         dbg_dmp(u16(LITTLE_ENDIAN), "platform")(input)
     }
 
-    /// Offset 0x0c: int32 FileBlockIndex
+    /// `Offset 0x0c`: int32 FileBlockIndex
     /// If the hash table entry is valid, this is the index into the
     /// block table of the file.
     /// Otherwise, one of the following two values:
