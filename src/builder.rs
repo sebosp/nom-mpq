@@ -5,6 +5,7 @@ use super::{MPQBlockTableEntry, MPQFileHeader, MPQHashTableEntry, MPQHashType, M
 use nom::IResult;
 use std::collections::HashMap;
 
+/// A builder for the MPQ parsing, allowing for building the archive progressively
 #[derive(Debug)]
 pub struct MPQBuilder {
     pub archive_header: Option<MPQFileHeader>,
@@ -62,6 +63,7 @@ impl MPQBuilder {
         Ok((tail, res))
     }
 
+    /// Consumes self and turns into the final MPQ.
     pub fn build(self, _orig_input: &[u8]) -> Result<MPQ, String> {
         let archive_header = self
             .archive_header

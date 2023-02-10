@@ -30,6 +30,7 @@ use nom::error::dbg_dmp;
 use nom::number::complete::{u16, u32};
 use nom::*;
 
+/// The hash table entry definition
 #[derive(Debug, PartialEq, Default, Clone)]
 pub struct MPQHashTableEntry {
     pub hash_a: u32,

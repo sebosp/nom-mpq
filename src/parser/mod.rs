@@ -38,6 +38,8 @@ fn validate_magic(input: &[u8]) -> IResult<&[u8], &[u8]> {
     dbg_dmp(tag(b"MPQ"), "tag")(input)
 }
 
+/// Different HashTypes used in MPQ Archives, they are used to identify
+/// embedded filenames.
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum MPQHashType {
     TableOffset,
@@ -71,6 +73,7 @@ impl TryFrom<MPQHashType> for u32 {
     }
 }
 
+/// The type of sections that are available in an MPQ archive
 #[derive(Debug, PartialEq)]
 pub enum MPQSectionType {
     UserData,
@@ -92,6 +95,8 @@ impl From<&[u8]> for MPQSectionType {
     }
 }
 
+/// A helper function that shows only up to the first 8 bytes of an u8 slice in
+/// xxd format.
 pub fn peek_hex(data: &[u8]) -> String {
     let mut max_length = 8usize;
     if data.len() < max_length {

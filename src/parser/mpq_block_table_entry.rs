@@ -1,4 +1,4 @@
-//! The Hash Table Parsing
+//! The Block Table Parsing
 //!
 //! The block table contains entries for each region in the archive.
 //! Regions may be either files, empty space, which may be overwritten by new

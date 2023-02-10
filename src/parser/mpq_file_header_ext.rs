@@ -7,7 +7,7 @@ use nom::error::dbg_dmp;
 use nom::number::complete::{i16, i64};
 use nom::*;
 
-/// Extended fields only present in the Burning Crusade format and later:
+/// Extended fields only present in the Burning Crusade format and later
 #[derive(Debug, PartialEq, Default, Clone, Copy)]
 pub struct MPQFileHeaderExt {
     extended_block_table_offset: i64,
@@ -31,19 +31,19 @@ impl MPQFileHeaderExt {
         ))
     }
 
-    /// Offset 0x20: int64 ExtendedBlockTableOffset
+    /// `Offset 0x20`: int64 ExtendedBlockTableOffset
     /// Offset to the beginning of the extended block table, relative to the beginning of the archive.
     pub fn parse_extended_block_table_offset(input: &[u8]) -> IResult<&[u8], i64> {
         dbg_dmp(i64(LITTLE_ENDIAN), "extended_block_table_offset")(input)
     }
 
-    /// Offset 0x28: int16 HashTableOffsetHigh
+    /// `Offset 0x28`: int16 HashTableOffsetHigh
     /// High 16 bits of the hash table offset for large archives.
     pub fn parse_hash_table_offset_high(input: &[u8]) -> IResult<&[u8], i16> {
         dbg_dmp(i16(LITTLE_ENDIAN), "hash_table_offset_high")(input)
     }
 
-    /// Offset 0x2A: int16 BlockTableOffsetHigh
+    /// `Offset 0x2A`: int16 BlockTableOffsetHigh
     /// High 16 bits of the block table offset for large archives.
     pub fn parse_block_table_offset_high(input: &[u8]) -> IResult<&[u8], i16> {
         dbg_dmp(i16(LITTLE_ENDIAN), "block_table_offset_high")(input)

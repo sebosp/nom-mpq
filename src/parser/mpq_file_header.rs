@@ -26,6 +26,7 @@ pub struct MPQFileHeader {
 }
 
 impl MPQFileHeader {
+    /// Parses the internal fields in the expected order.
     pub fn parse(input: &[u8], offset: usize) -> IResult<&[u8], Self> {
         let (input, header_size) = Self::parse_header_size(input)?;
         let (input, archive_size) = Self::parse_archive_size(input)?;

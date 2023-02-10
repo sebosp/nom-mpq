@@ -34,12 +34,14 @@ pub const COMPRESSION_PLAINTEXT: u8 = 0;
 pub const COMPRESSION_ZLIB: u8 = 2;
 pub const COMPRESSION_BZ2: u8 = 16;
 
+/// A basic error enum, tho mustly unused.
 #[derive(Error, Debug)]
 pub enum MPQParserError {
     #[error("Unexpected Section")]
     UnexpectedSection,
 }
 
+/// The main MPQ object that contains the parsed entries
 #[derive(Debug, Default)]
 pub struct MPQ {
     pub archive_header: MPQFileHeader,
@@ -50,7 +52,8 @@ pub struct MPQ {
 }
 
 impl MPQ {
-    /// Creates the encryption table
+    /// Prepares the encryption table, this hashmap is used for block-sized
+    /// decryption operations.
     fn prepare_encryption_table() -> HashMap<u32, u32> {
         let mut seed: u32 = 0x00100001;
         let mut res = HashMap::new();
@@ -99,7 +102,6 @@ impl MPQ {
     }
 
     /// Get the hash table entry corresponding to a given filename.
-    /// This function doesn't use self as the Builder also needs to access the same functionality.
     pub fn get_hash_table_entry(&self, filename: &str) -> Option<MPQHashTableEntry> {
         let hash_a = Self::mpq_string_hash(&self.encryption_table, filename, MPQHashType::HashA);
         let hash_b = Self::mpq_string_hash(&self.encryption_table, filename, MPQHashType::HashB);
@@ -113,7 +115,7 @@ impl MPQ {
         None
     }
 
-    /// Read the compression type and decompress file data.
+    /// Read the compression type and decompress file data accordingly.
     pub fn decompress(input: &[u8]) -> IResult<&[u8], Vec<u8>> {
         let mut data = vec![];
         let (tail, compression_type) = dbg_dmp(u8, "compression_type")(input)?;
@@ -139,7 +141,7 @@ impl MPQ {
         Ok((tail, data))
     }
 
-    /// Read a file from the MPQ archive.
+    /// Reads an embedded file inside the MPQ archive.
     #[tracing::instrument(level = "debug", skip(self, orig_input))]
     pub fn read_mpq_file_sector<'a>(
         &'a self,
@@ -273,6 +275,7 @@ impl MPQ {
         Ok((data, res))
     }
 
+    /// Returns the list of files contained inside the MPQ archive.
     pub fn get_files(&self, orig_input: &[u8]) -> Vec<(String, usize)> {
         let mut res: Vec<(String, usize)> = vec![];
         let files: Vec<String> = match self.read_mpq_file_sector("(listfile)", false, orig_input) {
