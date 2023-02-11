@@ -11,7 +11,6 @@ use thiserror::Error;
 
 pub mod builder;
 pub mod parser;
-pub mod s2protocol;
 pub use builder::MPQBuilder;
 use compress::zlib;
 pub use parser::MPQBlockTableEntry;
