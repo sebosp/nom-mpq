@@ -1,4 +1,4 @@
-# nom-mpq
+# nom-mpq 0.1.0
 Learning Nom Parsers and the MoPaQ format.
 
 ## Sources
