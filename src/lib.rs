@@ -1,12 +1,16 @@
-//! MPQ Reader logic
+//! Nom Parsing the MoPaQ file format.
+//! Sources:
+//! - [The_MoPaQ_Archive_Format](https://web.archive.org/web/20120222093346/http://wiki.devklog.net/index.php?title=The_MoPaQ_Archive_Format)
+//! - [MPyQ](https://github.com/arkx/mpyq/)
 
-use std::collections::HashMap;
-
+#![warn(missing_docs)]
 use nom::bytes::complete::take;
 use nom::error::dbg_dmp;
 use nom::number::complete::{i32, u32, u8};
 use nom::IResult;
 use parser::MPQHashType;
+use std::collections::HashMap;
+use std::io::Read;
 use thiserror::Error;
 
 pub mod builder;
@@ -18,24 +22,34 @@ pub use parser::MPQFileHeader;
 pub use parser::MPQHashTableEntry;
 pub use parser::MPQUserData;
 use parser::LITTLE_ENDIAN;
-use std::io::Read;
 
-pub const MPQ_FILE_IMPLODE: u32 = 0x00000100;
+// Unused flags:
+// pub const MPQ_FILE_IMPLODE: u32 = 0x00000100;
+// pub const MPQ_FILE_FIX_KEY: u32 = 0x00020000;
+// pub const MPQ_FILE_DELETE_MARKER: u32 = 0x02000000;
+
+/// The sector is compressed
 pub const MPQ_FILE_COMPRESS: u32 = 0x00000200;
+/// The sector is encrypted.
 pub const MPQ_FILE_ENCRYPTED: u32 = 0x00010000;
-pub const MPQ_FILE_FIX_KEY: u32 = 0x00020000;
+/// The sector contains a single file/unit.
 pub const MPQ_FILE_SINGLE_UNIT: u32 = 0x01000000;
-pub const MPQ_FILE_DELETE_MARKER: u32 = 0x02000000;
+/// The sector has cyclic redundancy check.
 pub const MPQ_FILE_SECTOR_CRC: u32 = 0x04000000;
+/// The sector exists (as opposed to marked as deleted)
 pub const MPQ_FILE_EXISTS: u32 = 0x80000000;
 
+/// The sector has no compression
 pub const COMPRESSION_PLAINTEXT: u8 = 0;
+/// The sector is compressed using [`zlib`]
 pub const COMPRESSION_ZLIB: u8 = 2;
+/// The sector is compressed using [`bzip2`]
 pub const COMPRESSION_BZ2: u8 = 16;
 
 /// A basic error enum, tho mustly unused.
 #[derive(Error, Debug)]
 pub enum MPQParserError {
+    /// A section magic was Unexpected
     #[error("Unexpected Section")]
     UnexpectedSection,
 }
@@ -43,10 +57,16 @@ pub enum MPQParserError {
 /// The main MPQ object that contains the parsed entries
 #[derive(Debug, Default)]
 pub struct MPQ {
+    /// The Archive Header containing format version, the offsets for the
+    /// block table and hash table.
     pub archive_header: MPQFileHeader,
+    /// The Archive may contain [`MPQUserData`], which is at the start of the file.
     pub user_data: Option<MPQUserData>,
+    /// The hash table entries, after decryption and parsing
     pub hash_table_entries: Vec<MPQHashTableEntry>,
+    /// The block table entries, after decryption and parsing
     pub block_table_entries: Vec<MPQBlockTableEntry>,
+    /// The internal MPQ encryption table.
     pub encryption_table: HashMap<u32, u32>,
 }
 
@@ -73,8 +93,9 @@ impl MPQ {
         res
     }
 
-    /// `_hash` on MPyQ
     /// Hash a string using MPQ's hash function
+    ///
+    /// `_hash` on MPyQ
     /// This function doesn't use self as the Builder also needs to access the same functionality.
     pub fn mpq_string_hash(
         encryption_table: &HashMap<u32, u32>,
@@ -101,6 +122,9 @@ impl MPQ {
     }
 
     /// Get the hash table entry corresponding to a given filename.
+    ///
+    /// A filename is hashed with both [`MPQHashType::HashA`] and [`MPQHashType::HashB`]
+    /// to uniquely identify the filename in the archive
     pub fn get_hash_table_entry(&self, filename: &str) -> Option<MPQHashTableEntry> {
         let hash_a = Self::mpq_string_hash(&self.encryption_table, filename, MPQHashType::HashA);
         let hash_b = Self::mpq_string_hash(&self.encryption_table, filename, MPQHashType::HashB);
@@ -232,8 +256,9 @@ impl MPQ {
         Ok((tail, res))
     }
 
-    /// `_decrypt` on MPyQ
     /// Decrypt hash or block table or a sector.
+    ///
+    /// `_decrypt` on MPyQ
     pub fn mpq_data_decrypt<'a>(
         encryption_table: &'a HashMap<u32, u32>,
         data: &'a [u8],
@@ -274,7 +299,7 @@ impl MPQ {
         Ok((data, res))
     }
 
-    /// Returns the list of files contained inside the MPQ archive.
+    /// Returns the list of filenames and their respective size as contained in the MPQ archive.
     pub fn get_files(&self, orig_input: &[u8]) -> Vec<(String, usize)> {
         let mut res: Vec<(String, usize)> = vec![];
         let files: Vec<String> = match self.read_mpq_file_sector("(listfile)", false, orig_input) {
