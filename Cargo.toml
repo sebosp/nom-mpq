@@ -1,11 +1,9 @@
 [package]
 name = "nom-mpq"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 license = "MIT"
 description = "A nom parser for the MoPaQ archive format"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 nom = "7.1.1"
