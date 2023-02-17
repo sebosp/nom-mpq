@@ -1,3 +1,6 @@
+[![Crates.io](https://img.shields.io/crates/v/nom-mpq.svg)](https://crates.io/crates/nom-mpq)
+[![Workflow Status](https://github.com/sebosp/nom-mpq/workflows/Rust/badge.svg)](https://github.com/sebosp/nom-mpq/actions?query=workflow%3A%22Rust%22)
+
 # nom-mpq 0.1.0
 Learning Nom Parsers and the MoPaQ format.
 

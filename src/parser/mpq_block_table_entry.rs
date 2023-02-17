@@ -18,11 +18,24 @@ use nom::error::dbg_dmp;
 use nom::number::complete::u32;
 use nom::*;
 
+/// The block tables of the MPQ archive, they are stored sequentially and encrypted.
 #[derive(Debug, PartialEq, Default, Clone)]
 pub struct MPQBlockTableEntry {
+    /// Block Offset, an offset of the beginning of the block,
+    /// relative to the beginning of the archive header, this can
+    /// be used in conjunction with `fseek` to start reading a specific
+    /// block. In the case of this crate, since the contents are in memory
+    /// already, it's used as `data[(archive_header_offset + self.offset)..]`.
+    /// This is because the first section of the archive may be the UserData
+    /// section so the archive header offset must be known.
     pub offset: u32,
+    /// Size of the block in the archive.
     pub archived_size: u32,
+    /// Size of the file data stored in the block.
+    /// see [`MPQBlockTableEntry::parse_size`] for more information.
     pub size: u32,
+    /// Bit mask of the flags for the block,
+    /// see [`MPQBlockTableEntry::parse_flags`] for more information.
     pub flags: u32,
 }
 
@@ -58,7 +71,7 @@ impl MPQBlockTableEntry {
     /// `Offset 0x00`: int32 BlockOffset
     ///
     /// Offset of the beginning of the block, relative to the beginning of the
-    /// archive.
+    /// archive header.
     pub fn parse_offset(input: &[u8]) -> IResult<&[u8], u32> {
         dbg_dmp(u32(LITTLE_ENDIAN), "offset")(input)
     }

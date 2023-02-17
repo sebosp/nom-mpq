@@ -14,9 +14,14 @@ use nom::*;
 /// The MPQ User Data
 #[derive(Debug, Default)]
 pub struct MPQUserData {
+    /// The number of bytes that have been allocated for user data.
     pub user_data_size: u32, // This variable is unused
+    /// The offset in the file to continue reading the  archive header.
     pub archive_header_offset: u32,
+    /// The block to store user data in.
     pub user_data_header_size: u32,
+    /// The contents of the user data, in Starcraft 2 replay files contains
+    /// the build information of the game version that created the replay.
     pub content: Vec<u8>,
 }
 
@@ -40,7 +45,8 @@ impl MPQUserData {
         ))
     }
 
-    /// Offset 0x04: int32 UserDataSize
+    /// `Offset 0x04`: int32 UserDataSize
+    ///
     /// The number of bytes that have been allocated in this archive for user
     /// data. This does not need to be the exact size of the data itself, but
     /// merely the maximum amount of data which may be stored in this archive.
@@ -48,27 +54,30 @@ impl MPQUserData {
         dbg_dmp(u32(LITTLE_ENDIAN), "user_data_size")(input)
     }
 
-    /// Offset 0x08: int32 ArchiveHeaderOffset
+    /// `Offset 0x08`: int32 ArchiveHeaderOffset
+    ///
     /// The offset in the file at which to continue the search for the archive
     /// header.
     pub fn parse_archive_header_offset(input: &[u8]) -> IResult<&[u8], u32> {
         dbg_dmp(u32(LITTLE_ENDIAN), "archive_header_offset")(input)
     }
 
-    /// Offset 0x0c: int32 UserDataHeaderSize
+    /// `Offset 0x0c`: int32 UserDataHeaderSize
     /// The block to store user data in.
     pub fn parse_user_data_header_size(input: &[u8]) -> IResult<&[u8], u32> {
         dbg_dmp(u32(LITTLE_ENDIAN), "user_data_size")(input)
     }
 
-    /// Offset 0x10: byte(UserDataSize) UserData
+    /// `Offset 0x10`: byte(UserDataSize) UserData
+    ///
     /// The block to store user data in.
     pub fn parse_content(input: &[u8], user_data_header_size: u32) -> IResult<&[u8], Vec<u8>> {
         let (input, content) = dbg_dmp(take(user_data_header_size as usize), "content")(input)?;
         Ok((input, content.to_vec()))
     }
 
-    /// Offset Varying: padded data
+    /// Offset Varies: padded data
+    ///
     /// Consumes until the header_offset, in MPyQ this is done through file.seek
     pub fn consume_until_header_offset(
         input: &[u8],

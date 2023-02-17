@@ -8,14 +8,24 @@ use std::collections::HashMap;
 /// A builder for the MPQ parsing, allowing for building the archive progressively
 #[derive(Debug)]
 pub struct MPQBuilder {
+    /// Mandatory field, all MPQ Archives must have an archive header.
     pub archive_header: Option<MPQFileHeader>,
+    /// Optional field, not all MPQ Archives have user_data.
+    /// The user_data contains in the case of Starcrat 2 Replay file,
+    /// the build information of the version of the game under whcich is played.
+    /// Different game versions would become different protocols/details, maybe
+    /// even units?
     pub user_data: Option<MPQUserData>,
+    /// The MPQ Hash Table Entries content.
     pub hash_table_entries: Vec<MPQHashTableEntry>,
+    /// The MPQ Block Table Entries content
     pub block_table_entries: Vec<MPQBlockTableEntry>,
+    /// An encryption table to lookup, this is shared with the [`crate::MPQ`] object itself.
     pub encryption_table: HashMap<u32, u32>,
 }
 
 impl MPQBuilder {
+    /// Initializes the Builder, internally creates the encryption table.
     pub fn new() -> Self {
         Self {
             archive_header: None,
@@ -50,11 +60,12 @@ impl MPQBuilder {
         self
     }
 
+    /// Performs mpq string hashing using the encryption table.
     pub fn mpq_string_hash(&self, location: &str, hash_type: MPQHashType) -> u32 {
         MPQ::mpq_string_hash(&self.encryption_table, location, hash_type)
     }
 
-    /// TODO: data may have less than 8 elements
+    /// Uses the encryption table and key to decrypt some bytes
     #[tracing::instrument(level = "trace", skip(self, data))]
     pub fn mpq_data_decrypt<'a>(&'a self, data: &'a [u8], key: u32) -> IResult<&'a [u8], Vec<u8>> {
         tracing::trace!("Encrypted: {:?}", peek_hex(&data));
