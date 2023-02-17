@@ -11,17 +11,31 @@ use nom::*;
 /// The MPQ File Header
 #[derive(Debug, Default, PartialEq, Clone, Copy)]
 pub struct MPQFileHeader {
+    /// Size of the archive header.
     pub header_size: u32,
+    /// Size of the whole archive, including the header.
     pub archive_size: u32,
+    /// MoPaQ format version.
     pub format_version: u16,
+    /// Power of two exponent specifying the number of 512-byte
+    /// disk sectors in each logical sector in the archive.
     pub sector_size_shift: u16,
+    /// Offset to the beginning of the hash table,
+    /// relative to the beginning of the archive header.
+    /// To `seek` it we must add the [`MPQFileHeader::offset`]
     pub hash_table_offset: u32,
+    /// Offset to the beginning of the hash table,
+    /// relative to the beginning of the archive header.
+    /// To `seek` it we must add the [`MPQFileHeader::offset`]
     pub block_table_offset: u32,
+    /// Number of entries in the hash table.
     pub hash_table_entries: u32,
+    /// Number of entries in the block table.
     pub block_table_entries: u32,
+    /// Extended Block Table only present in Burning Crusade format and later:
     pub extended_file_header: Option<MPQFileHeaderExt>,
-    // Store the offset at which the FileHeader was found.
-    // this is done because other offsets are relative to this one.
+    /// Store the offset at which the FileHeader was found.
+    /// this is done because other offsets are relative to this one.
     pub offset: usize,
 }
 
@@ -56,12 +70,14 @@ impl MPQFileHeader {
     }
 
     /// `Offset 0x04`: int32 HeaderSize
+    ///
     /// Size of the archive header.
     pub fn parse_header_size(input: &[u8]) -> IResult<&[u8], u32> {
         dbg_dmp(u32(LITTLE_ENDIAN), "header_size")(input)
     }
 
     /// `Offset: 0x08`: int32 ArchiveSize
+    ///
     /// Size of the whole archive, including the header.
     /// Does not include the strong digital signature, if present.
     /// This size is used, among other things, for determining the
@@ -76,21 +92,23 @@ impl MPQFileHeader {
     }
 
     /// `Offset 0x0c`: int16 FormatVersion
+    ///
     /// MoPaQ format version. MPQAPI will not open archives where
     /// this is negative. Known versions:
-    /// - 0x0000 Original format. HeaderSize should be 0x20, and large
+    /// - `0x0000` Original format. HeaderSize should be `0x20`, and large
     ///          archives are not supported.
-    /// - 0x0001 Burning Crusade format. Header size should be 0x2c,
+    /// - `0x0001` Burning Crusade format. Header size should be `0x2c`,
     ///          and large archives are supported.
     pub fn parse_format_version(input: &[u8]) -> IResult<&[u8], u16> {
         dbg_dmp(u16(LITTLE_ENDIAN), "format_version")(input)
     }
 
     /// `Offset 0x0e`: int8 SectorSizeShift
+    ///
     /// Power of two exponent specifying the number of 512-byte
     /// disk sectors in each logical sector in the archive. The size
     /// of each logical sector in the archive is:
-    /// 512 * 2^SectorSizeShift.
+    /// `512` * `2^SectorSizeShift`.
     /// Bugs in the Storm library dictate that this shouldalways be:
     /// 3 (4096 byte sectors).
     pub fn parse_sector_size_shift(input: &[u8]) -> IResult<&[u8], u16> {
@@ -98,6 +116,7 @@ impl MPQFileHeader {
     }
 
     /// `Offset 0x10`: int32 HashTableOffset
+    ///
     /// Offset to the beginning of the hash table,
     /// relative to the beginning of the archive.
     pub fn parse_hash_table_offset(input: &[u8]) -> IResult<&[u8], u32> {
@@ -105,6 +124,7 @@ impl MPQFileHeader {
     }
 
     /// `Offset 0x14`: int32 BlockTableOffset
+    ///
     /// Offset to the beginning of the block table,
     /// relative to the beginning of the archive.
     pub fn parse_block_table_offset(input: &[u8]) -> IResult<&[u8], u32> {
@@ -112,21 +132,24 @@ impl MPQFileHeader {
     }
 
     /// `Offset 0x18`: int32 HashTableEntries
-    /// Desc: Number of entries in the hash table.
+    ///
+    /// Number of entries in the hash table.
     /// Must be a power of two, and must be:
-    ///   less than 2^16 for the original MoPaQ format,
-    ///   or less than 2^20 for the Burning Crusade format.
+    ///   less than `2^16` for the original MoPaQ format,
+    ///   or less than `2^20` for the Burning Crusade format.
     pub fn parse_hash_table_entries(input: &[u8]) -> IResult<&[u8], u32> {
         dbg_dmp(u32(LITTLE_ENDIAN), "hash_table_entries")(input)
     }
 
     /// `Offset 0x1c`: int32 BlockTableEntries
+    ///
     /// Number of entries in the block table.
     pub fn parse_block_table_entries(input: &[u8]) -> IResult<&[u8], u32> {
         dbg_dmp(u32(LITTLE_ENDIAN), "block_table_entries")(input)
     }
 
     /// `Offset 0x20`: ExtendedBlockTable
+    ///
     /// Extended Block Table only present in Burning Crusade format and later:
     pub fn parse_extended_header_if_needed(
         input: &[u8],

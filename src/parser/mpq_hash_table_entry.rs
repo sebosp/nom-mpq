@@ -33,10 +33,18 @@ use nom::*;
 /// The hash table entry definition
 #[derive(Debug, PartialEq, Default, Clone)]
 pub struct MPQHashTableEntry {
+    /// The hash of the file path, using method A.
     pub hash_a: u32,
+    /// The hash of the file path, using method B.
     pub hash_b: u32,
+    /// The language of the file.
+    /// See [`MPQHashTableEntry::parse_locale`] for more information.
     pub locale: u16,
+    /// The platform the file is used for.
+    /// See [`MPQHashTableEntry::parse_platform`] for more information.
     pub platform: u16,
+    /// Index into the block table of the file.
+    /// See [`MPQHashTableEntry::parse_block_table_index`] for more information.
     pub block_table_index: u32,
 }
 
@@ -79,18 +87,21 @@ impl MPQHashTableEntry {
     }
 
     /// `Offset 0x00`: int32 FilePathHashA
+    ///
     /// The hash of the file path, using method A.
     pub fn parse_hash_a(input: &[u8]) -> IResult<&[u8], u32> {
         dbg_dmp(u32(LITTLE_ENDIAN), "hash_a")(input)
     }
 
     /// `Offset 0x04`: int32 FilePathHashB
+    ///
     /// The hash of the file path, using method B.
     pub fn parse_hash_b(input: &[u8]) -> IResult<&[u8], u32> {
         dbg_dmp(u32(LITTLE_ENDIAN), "hash_b")(input)
     }
 
     /// `Offset 0x08`: int16 Language
+    ///
     /// The language of the file. This is a Windows LANGID data type, and uses
     /// the same values.
     /// 0 indicates the default language (American English), or that the file
@@ -100,6 +111,7 @@ impl MPQHashTableEntry {
     }
 
     /// `Offset 0x0a`: int16 Platform
+    ///
     /// The platform the file is used for. 0 indicates the default platform.
     /// No other values have been observed.
     pub fn parse_platform(input: &[u8]) -> IResult<&[u8], u16> {
@@ -107,6 +119,7 @@ impl MPQHashTableEntry {
     }
 
     /// `Offset 0x0c`: int32 FileBlockIndex
+    ///
     /// If the hash table entry is valid, this is the index into the
     /// block table of the file.
     /// Otherwise, one of the following two values:

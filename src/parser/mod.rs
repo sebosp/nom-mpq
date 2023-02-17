@@ -29,11 +29,17 @@ pub use mpq_file_header_ext::MPQFileHeaderExt;
 pub use mpq_hash_table_entry::MPQHashTableEntry;
 pub use mpq_user_data::MPQUserData;
 
+/// Final byte of the magic to identify particularly the Archive Header.
 pub const MPQ_ARCHIVE_HEADER_TYPE: u8 = 0x1a;
+/// Final byte of the magic to identify particularly the User Data.
 pub const MPQ_USER_DATA_HEADER_TYPE: u8 = 0x1b;
+/// The numeric values read are encoded in little endian LE
 pub const LITTLE_ENDIAN: Endianness = Endianness::Little;
+/// The characters used as displayable by [`peek_hex`]
 pub static CHARS: &[u8] = b"0123456789abcdef";
 
+/// Validates the first three bytes of the magic, it must be followed by either the
+/// [`MPQ_ARCHIVE_HEADER_TYPE`] or the [`MPQ_USER_DATA_HEADER_TYPE`]
 fn validate_magic(input: &[u8]) -> IResult<&[u8], &[u8]> {
     dbg_dmp(tag(b"MPQ"), "tag")(input)
 }
@@ -42,9 +48,13 @@ fn validate_magic(input: &[u8]) -> IResult<&[u8], &[u8]> {
 /// embedded filenames.
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum MPQHashType {
+    /// A hashing of type TableOffset
     TableOffset,
+    /// A Hashing of type A
     HashA,
+    /// A Hashing of type B
     HashB,
+    /// A Hashing of type Table
     Table,
 }
 
@@ -76,8 +86,11 @@ impl TryFrom<MPQHashType> for u32 {
 /// The type of sections that are available in an MPQ archive
 #[derive(Debug, PartialEq)]
 pub enum MPQSectionType {
+    /// The MPQ Section is of type User Data
     UserData,
+    /// The MPQ Section is of type Header
     Header,
+    /// The MPQ Section type is unknown.
     Unknown,
 }
 
