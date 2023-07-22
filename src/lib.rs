@@ -192,7 +192,7 @@ impl MPQ {
         let (tail, file_data) =
             dbg_dmp(take(block_entry.archived_size), "file_data")(&orig_input[offset..])?;
 
-        tracing::debug!("Block table data: {}", parser::peek_hex(&file_data));
+        tracing::debug!("Block table data: {}", parser::peek_hex(file_data));
         if block_entry.flags & MPQ_FILE_ENCRYPTED != 0 {
             panic!("Encryption is not supported");
         }
@@ -200,60 +200,63 @@ impl MPQ {
             tracing::debug!("File sector contains a single unit",);
             // Single unit files only need to be decompressed, but
             // compression only happens when at least one byte is gained.
-            if block_entry.flags & MPQ_FILE_COMPRESS != 0 && force_decompress
-                || block_entry.size > block_entry.archived_size
+            if block_entry.flags & MPQ_FILE_COMPRESS != 0
+                && (force_decompress || block_entry.size > block_entry.archived_size)
             {
                 tracing::debug!("File needs to be decompressed",);
                 let (_tail, decompressed_data) = Self::decompress(file_data)?;
                 return Ok((tail, decompressed_data));
-            } else {
-                // File consists of many sectors. They all need to be
-                // decompressed separately and united.
-                let sector_size = 512 << self.archive_header.sector_size_shift;
-                let mut sectors =
-                    (block_entry.size as f32 / sector_size as f32).floor() as usize + 1usize;
-                let crc = if block_entry.flags & MPQ_FILE_SECTOR_CRC != 0 {
-                    sectors += 1;
-                    true
-                } else {
-                    false
-                };
-                let mut positions: Vec<usize> = vec![];
-                let mut position_file_index = &file_data[..4 * (sectors + 1)];
-                for _ in 0..sectors + 1 {
-                    // Note: MPyQ format for this is a list of '<I'
-                    // as long as there are sectors + 1
-                    // `'<%dI' % (sectors + 1)` (Not to confuse the `d` with
-                    // double, it's for the `%` format operator.
-                    let (new_pos_idx, position) =
-                        dbg_dmp(u32(LITTLE_ENDIAN), "positions")(position_file_index)?;
-                    positions.push(position as usize);
-                    position_file_index = new_pos_idx;
-                }
-                let mut sector_bytes_left = block_entry.size as usize;
-                let mut total_sectors = positions.len() - 1;
-                if crc {
-                    total_sectors -= 1;
-                }
-
-                for i in 0..total_sectors {
-                    let mut sector = file_data[positions[i]..positions[i + 1]].to_vec();
-                    if block_entry.flags & MPQ_FILE_COMPRESS != 0 && force_decompress
-                        || sector_bytes_left as usize > sector.len()
-                    {
-                        let (_tail, mut decompressed_sector) =
-                            Self::decompress(&file_data[positions[i]..positions[i + 1]])?;
-                        res.append(&mut decompressed_sector);
-                    } else {
-                        res.append(&mut sector);
-                    }
-
-                    sector_bytes_left -= sector.len();
-                }
-                return Ok((tail, res));
             }
+            tracing::debug!("File does not needs to be decompressed",);
+        } else {
+            tracing::debug!("File does not need to be decompressed",);
+            // File consists of many sectors. They all need to be
+            // decompressed separately and united.
+            let sector_size = 512 << self.archive_header.sector_size_shift;
+            let mut sectors =
+                (block_entry.size as f32 / sector_size as f32).floor() as usize + 1usize;
+            tracing::debug!("Total sectors: {sectors}");
+            let crc = if block_entry.flags & MPQ_FILE_SECTOR_CRC != 0 {
+                sectors += 1;
+                true
+            } else {
+                false
+            };
+            let mut positions: Vec<usize> = vec![];
+            let mut position_file_index = &file_data[..4 * (sectors + 1)];
+            for _ in 0..sectors + 1 {
+                // Note: MPyQ format for this is a list of '<I'
+                // as long as there are sectors + 1
+                // `'<%dI' % (sectors + 1)` (Not to confuse the `d` with
+                // double, it's for the `%` format operator.
+                let (new_pos_idx, position) =
+                    dbg_dmp(u32(LITTLE_ENDIAN), "positions")(position_file_index)?;
+                positions.push(position as usize);
+                position_file_index = new_pos_idx;
+            }
+            let mut sector_bytes_left = block_entry.size as usize;
+            let mut total_sectors = positions.len() - 1;
+            if crc {
+                total_sectors -= 1;
+            }
+
+            for i in 0..total_sectors {
+                let mut sector = file_data[positions[i]..positions[i + 1]].to_vec();
+                if block_entry.flags & MPQ_FILE_COMPRESS != 0
+                    && (force_decompress || sector_bytes_left > sector.len())
+                {
+                    let (_tail, mut decompressed_sector) =
+                        Self::decompress(&file_data[positions[i]..positions[i + 1]])?;
+                    res.append(&mut decompressed_sector);
+                } else {
+                    res.append(&mut sector);
+                }
+
+                sector_bytes_left -= sector.len();
+            }
+            return Ok((tail, res));
         }
-        Ok((tail, res))
+        Ok((tail, file_data.to_vec()))
     }
 
     /// Decrypt hash or block table or a sector.
