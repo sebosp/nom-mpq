@@ -4,6 +4,7 @@ version = "0.1.2"
 edition = "2021"
 license = "MIT"
 description = "A nom parser for the MoPaQ archive format"
+repository = "https://github.com/sebosp/nom-mpq"
 
 [dependencies]
 nom = "7.1.1"
