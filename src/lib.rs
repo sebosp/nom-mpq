@@ -155,8 +155,8 @@ impl MPQ {
             }
             COMPRESSION_BZ2 => {
                 tracing::debug!("Attempting BZ2 compression",);
-                let mut decompressor = bzip2::read::BzDecoder::new(tail);
-                let _ = decompressor.read_to_end(&mut data).unwrap();
+                let mut decompressor = bzip2_rs::DecoderReader::new(tail);
+                std::io::copy(&mut decompressor, &mut data).unwrap();
             }
             _ => panic!("Unsupported compression type: {}", compression_type),
         };
