@@ -11,12 +11,13 @@ use nom::IResult;
 use parser::MPQHashType;
 use std::collections::HashMap;
 use std::io::Read;
-use thiserror::Error;
 
 pub mod builder;
+pub mod error;
 pub mod parser;
 pub use builder::MPQBuilder;
 use compress::zlib;
+pub use error::MPQParserError;
 pub use parser::MPQBlockTableEntry;
 pub use parser::MPQFileHeader;
 pub use parser::MPQHashTableEntry;
@@ -45,14 +46,6 @@ pub const COMPRESSION_PLAINTEXT: u8 = 0;
 pub const COMPRESSION_ZLIB: u8 = 2;
 /// The sector is compressed using [`bzip2`]
 pub const COMPRESSION_BZ2: u8 = 16;
-
-/// A basic error enum, tho mustly unused.
-#[derive(Error, Debug)]
-pub enum MPQParserError {
-    /// A section magic was Unexpected
-    #[error("Unexpected Section")]
-    UnexpectedSection,
-}
 
 /// The main MPQ object that contains the parsed entries
 #[derive(Debug, Default)]
@@ -115,7 +108,7 @@ impl MPQ {
                 ),
             };
             seed1 = (*value as u64 ^ (seed1 + seed2)) & 0xFFFFFFFFu64;
-            seed2 = ch_ord as u64 + seed1 + seed2 + (seed2 << 5) + 3 & 0xFFFFFFFFu64;
+            seed2 = (ch_ord as u64 + seed1 + seed2 + (seed2 << 5) + 3) & 0xFFFFFFFFu64;
         }
         tracing::trace!("Returning {} for location: {}", (seed1 as u32), location);
         seed1 as u32
@@ -288,11 +281,11 @@ impl MPQ {
             let (_tail, value) =
                 dbg_dmp(i32(LITTLE_ENDIAN), "encrypted_value")(&data[i * 4..i * 4 + 4])?;
             let mut value = value as i64;
-            value = (value as i64 ^ (seed1 + seed2)) & 0xFFFFFFFFi64;
+            value = (value ^ (seed1 + seed2)) & 0xFFFFFFFFi64;
 
             seed1 = ((!seed1 << 0x15) + 0x11111111) | (seed1 >> 0x0B);
             seed1 &= 0xFFFFFFFF;
-            seed2 = value + seed2 + (seed2 << 5) + 3 & 0xFFFFFFFFi64;
+            seed2 = (value + seed2 + (seed2 << 5) + 3) & 0xFFFFFFFFi64;
             let mut le_packed_value = (value as i32).to_le_bytes().to_vec();
 
             // pack in little endian

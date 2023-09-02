@@ -1,7 +1,6 @@
 use clap::{Parser, Subcommand};
 use nom_mpq::*;
 use std::io::Write;
-use tracing_subscriber;
 
 #[derive(Subcommand)]
 enum Commands {
