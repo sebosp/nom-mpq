@@ -139,7 +139,7 @@ pub fn peek_hex(data: &[u8]) -> String {
         v.push(b' ');
 
         for &byte in chunk {
-            if byte >= 32 && byte <= 126 {
+            if (32..=126).contains(&byte) {
                 v.push(byte);
             } else {
                 v.push(b'.');
@@ -202,7 +202,7 @@ pub fn parse(orig_input: &[u8]) -> IResult<&[u8], MPQ> {
                 tracing::warn!(
                     "Unabe to use key: '{}' to decrypt MPQHashTable data: {}: {:?}",
                     hash_table_key,
-                    peek_hex(&encrypted_hash_table_data),
+                    peek_hex(encrypted_hash_table_data),
                     err,
                 );
                 return Err(nom::Err::Incomplete(nom::Needed::Unknown));
@@ -232,7 +232,7 @@ pub fn parse(orig_input: &[u8]) -> IResult<&[u8], MPQ> {
                 tracing::warn!(
                     "Unabe to use key: '{}' to decrypt MPQBlockTable data: {}: {:?}",
                     block_table_key,
-                    peek_hex(&encrypted_block_table_data),
+                    peek_hex(encrypted_block_table_data),
                     err,
                 );
                 return Err(nom::Err::Incomplete(nom::Needed::Unknown));

@@ -24,6 +24,12 @@ pub struct MPQBuilder {
     pub encryption_table: HashMap<u32, u32>,
 }
 
+impl Default for MPQBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MPQBuilder {
     /// Initializes the Builder, internally creates the encryption table.
     pub fn new() -> Self {
@@ -68,7 +74,7 @@ impl MPQBuilder {
     /// Uses the encryption table and key to decrypt some bytes
     #[tracing::instrument(level = "trace", skip(self, data))]
     pub fn mpq_data_decrypt<'a>(&'a self, data: &'a [u8], key: u32) -> IResult<&'a [u8], Vec<u8>> {
-        tracing::trace!("Encrypted: {:?}", peek_hex(&data));
+        tracing::trace!("Encrypted: {:?}", peek_hex(data));
         let (tail, res) = MPQ::mpq_data_decrypt(&self.encryption_table, data, key)?;
         tracing::trace!("Decrypted: {:?}", peek_hex(&res));
         Ok((tail, res))
