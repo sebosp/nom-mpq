@@ -108,7 +108,7 @@ impl MPQ {
                 ),
             };
             seed1 = (*value as u64 ^ (seed1 + seed2)) & 0xFFFFFFFFu64;
-            seed2 = (ch_ord as u64 + seed1 + seed2 + (seed2 << 5) + 3) & 0xFFFFFFFFu64;
+            seed2 = ch_ord as u64 + seed1 + seed2 + (seed2 << 5) + 3 & 0xFFFFFFFFu64;
         }
         tracing::trace!("Returning {} for location: {}", (seed1 as u32), location);
         seed1 as u32
@@ -285,7 +285,7 @@ impl MPQ {
 
             seed1 = ((!seed1 << 0x15) + 0x11111111) | (seed1 >> 0x0B);
             seed1 &= 0xFFFFFFFF;
-            seed2 = (value + seed2 + (seed2 << 5) + 3) & 0xFFFFFFFFi64;
+            seed2 = value + seed2 + (seed2 << 5) + 3 & 0xFFFFFFFFi64;
             let mut le_packed_value = (value as i32).to_le_bytes().to_vec();
 
             // pack in little endian
