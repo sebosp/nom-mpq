@@ -4,6 +4,7 @@
 //! - [MPyQ](https://github.com/arkx/mpyq/)
 
 #![warn(missing_docs)]
+pub use error::MPQResult;
 use nom::bytes::complete::take;
 use nom::error::dbg_dmp;
 use nom::number::complete::{i32, u32, u8};
@@ -90,16 +91,17 @@ impl MPQ {
     ///
     /// `_hash` on MPyQ
     /// This function doesn't use self as the Builder also needs to access the same functionality.
+    #[allow(clippy::precedence)]
     pub fn mpq_string_hash(
         encryption_table: &HashMap<u32, u32>,
         location: &str,
         hash_type: MPQHashType,
-    ) -> u32 {
+    ) -> Result<u32, MPQParserError> {
         let mut seed1: u64 = 0x7FED7FEDu64;
         let mut seed2: u64 = 0xEEEEEEEEu64;
         for ch in location.to_uppercase().chars() {
             let ch_ord: u32 = ch.into();
-            let hash_type_idx: u32 = hash_type.try_into().unwrap();
+            let hash_type_idx: u32 = hash_type.try_into()?;
             let value = match encryption_table.get(&((hash_type_idx << 8) + ch_ord)) {
                 Some(val) => val,
                 None => panic!(
@@ -111,28 +113,31 @@ impl MPQ {
             seed2 = ch_ord as u64 + seed1 + seed2 + (seed2 << 5) + 3 & 0xFFFFFFFFu64;
         }
         tracing::trace!("Returning {} for location: {}", (seed1 as u32), location);
-        seed1 as u32
+        Ok(seed1 as u32)
     }
 
     /// Get the hash table entry corresponding to a given filename.
     ///
     /// A filename is hashed with both [`MPQHashType::HashA`] and [`MPQHashType::HashB`]
     /// to uniquely identify the filename in the archive
-    pub fn get_hash_table_entry(&self, filename: &str) -> Option<MPQHashTableEntry> {
-        let hash_a = Self::mpq_string_hash(&self.encryption_table, filename, MPQHashType::HashA);
-        let hash_b = Self::mpq_string_hash(&self.encryption_table, filename, MPQHashType::HashB);
+    pub fn get_hash_table_entry(
+        &self,
+        filename: &str,
+    ) -> Result<MPQHashTableEntry, MPQParserError> {
+        let hash_a = Self::mpq_string_hash(&self.encryption_table, filename, MPQHashType::HashA)?;
+        let hash_b = Self::mpq_string_hash(&self.encryption_table, filename, MPQHashType::HashB)?;
         for entry in &self.hash_table_entries {
             if entry.hash_a == hash_a && entry.hash_b == hash_b {
                 tracing::debug!("Found filename: {}, as entry: {:?}", filename, entry);
-                return Some(entry.clone());
+                return Ok(entry.clone());
             }
         }
         tracing::warn!("Unable to find hash table entry for {}", filename);
-        None
+        Err(MPQParserError::HashTableEntryNotFound(filename.to_string()))
     }
 
     /// Read the compression type and decompress file data accordingly.
-    pub fn decompress(input: &[u8]) -> IResult<&[u8], Vec<u8>> {
+    pub fn decompress(input: &[u8]) -> MPQResult<&[u8], Vec<u8>> {
         let mut data = vec![];
         let (tail, compression_type) = dbg_dmp(u8, "compression_type")(input)?;
         match compression_type {
@@ -144,12 +149,12 @@ impl MPQ {
                 tracing::debug!("Attempting ZLIB compression",);
                 let mut d = zlib::Decoder::new(std::io::BufReader::new(tail));
 
-                let _ = d.read_to_end(&mut data).unwrap();
+                let _ = d.read_to_end(&mut data)?;
             }
             COMPRESSION_BZ2 => {
                 tracing::debug!("Attempting BZ2 compression",);
                 let mut decompressor = bzip2_rs::DecoderReader::new(tail);
-                std::io::copy(&mut decompressor, &mut data).unwrap();
+                std::io::copy(&mut decompressor, &mut data)?;
             }
             _ => panic!("Unsupported compression type: {}", compression_type),
         };
@@ -164,12 +169,9 @@ impl MPQ {
         filename: &str,
         force_decompress: bool,
         orig_input: &'a [u8],
-    ) -> IResult<&'a [u8], Vec<u8>> {
+    ) -> MPQResult<&'a [u8], Vec<u8>> {
         let mut res = vec![];
-        let hash_entry = match self.get_hash_table_entry(filename) {
-            Some(val) => val,
-            None => return Ok((orig_input, res)),
-        };
+        let hash_entry = self.get_hash_table_entry(filename)?;
         let block_entry = self.block_table_entries[hash_entry.block_table_index as usize].clone();
         tracing::debug!("block_entry {:?}", block_entry);
         // Read the block
@@ -255,6 +257,7 @@ impl MPQ {
     /// Decrypt hash or block table or a sector.
     ///
     /// `_decrypt` on MPyQ
+    #[allow(clippy::precedence)]
     pub fn mpq_data_decrypt<'a>(
         encryption_table: &'a HashMap<u32, u32>,
         data: &'a [u8],
@@ -317,9 +320,13 @@ impl MPQ {
         };
         for filename in files {
             let hash_entry = match self.get_hash_table_entry(&filename) {
-                Some(val) => val,
-                None => {
-                    tracing::warn!("Unable to find hash entry for filename: {:?}", filename);
+                Ok(val) => val,
+                Err(err) => {
+                    tracing::warn!(
+                        "Unable to find hash entry for filename: {:?}: {:?}",
+                        filename,
+                        err
+                    );
                     continue;
                 }
             };

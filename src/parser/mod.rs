@@ -7,12 +7,13 @@
 //!   - offset from the beginning of the structure: data type(array size)
 //!     member name : member description
 
+use crate::{MPQParserError, MPQResult};
+
 use super::{MPQBuilder, MPQ};
 use nom::bytes::complete::{tag, take};
 use nom::error::dbg_dmp;
 use nom::multi::count;
 use nom::number::Endianness;
-use nom::IResult;
 use std::convert::From;
 use std::convert::TryFrom;
 use std::fs::File;
@@ -40,8 +41,8 @@ pub static CHARS: &[u8] = b"0123456789abcdef";
 
 /// Validates the first three bytes of the magic, it must be followed by either the
 /// [`MPQ_ARCHIVE_HEADER_TYPE`] or the [`MPQ_USER_DATA_HEADER_TYPE`]
-fn validate_magic(input: &[u8]) -> IResult<&[u8], &[u8]> {
-    dbg_dmp(tag(b"MPQ"), "tag")(input)
+fn validate_magic(input: &[u8]) -> MPQResult<&[u8], &[u8]> {
+    dbg_dmp(tag(b"MPQ"), "tag")(input).map_err(|e| e.into())
 }
 
 /// Different HashTypes used in MPQ Archives, they are used to identify
@@ -59,20 +60,20 @@ pub enum MPQHashType {
 }
 
 impl TryFrom<u32> for MPQHashType {
-    type Error = String;
+    type Error = MPQParserError;
     fn try_from(value: u32) -> Result<Self, Self::Error> {
         match value {
             0 => Ok(Self::TableOffset),
             1 => Ok(Self::HashA),
             2 => Ok(Self::HashB),
             3 => Ok(Self::Table),
-            _ => Err(format!("Unknown HashType number {}", value)),
+            _ => Err(MPQParserError::InvalidHashType(value)),
         }
     }
 }
 
 impl TryFrom<MPQHashType> for u32 {
-    type Error = String;
+    type Error = MPQParserError;
     fn try_from(value: MPQHashType) -> Result<Self, Self::Error> {
         match value {
             MPQHashType::TableOffset => Ok(0),
@@ -154,7 +155,7 @@ pub fn peek_hex(data: &[u8]) -> String {
 
 /// Gets the header type from the MPQ file
 #[tracing::instrument(level = "trace", skip(input), fields(input = peek_hex(input)))]
-pub fn get_header_type(input: &[u8]) -> IResult<&[u8], MPQSectionType> {
+pub fn get_header_type(input: &[u8]) -> MPQResult<&[u8], MPQSectionType> {
     let (input, _) = validate_magic(input)?;
     let (input, mpq_type) = dbg_dmp(take(1usize), "mpq_type")(input)?;
     let mpq_type = MPQSectionType::from(mpq_type);
@@ -164,7 +165,7 @@ pub fn get_header_type(input: &[u8]) -> IResult<&[u8], MPQSectionType> {
 /// Reads the file headers, headers must contain the Archive File Header
 /// but they may optionally contain the User Data Headers.
 #[tracing::instrument(level = "trace", skip(input), fields(input = peek_hex(input)))]
-pub fn read_headers(input: &[u8]) -> IResult<&[u8], (MPQFileHeader, Option<MPQUserData>)> {
+pub fn read_headers(input: &[u8]) -> MPQResult<&[u8], (MPQFileHeader, Option<MPQUserData>)> {
     let mut user_data: Option<MPQUserData> = None;
     let (input, mpq_type) = get_header_type(input)?;
     let (input, archive_header) = match mpq_type {
@@ -184,10 +185,10 @@ pub fn read_headers(input: &[u8]) -> IResult<&[u8], (MPQFileHeader, Option<MPQUs
 }
 
 /// Parses the whole input into an MPQ
-pub fn parse(orig_input: &[u8]) -> IResult<&[u8], MPQ> {
+pub fn parse(orig_input: &[u8]) -> MPQResult<&[u8], MPQ> {
     let builder = MPQBuilder::new();
-    let hash_table_key = builder.mpq_string_hash("(hash table)", MPQHashType::Table);
-    let block_table_key = builder.mpq_string_hash("(block table)", MPQHashType::Table);
+    let hash_table_key = builder.mpq_string_hash("(hash table)", MPQHashType::Table)?;
+    let block_table_key = builder.mpq_string_hash("(block table)", MPQHashType::Table)?;
     let (tail, (archive_header, user_data)) = read_headers(orig_input)?;
     // "seek" to the hash table offset.
     let hash_table_offset = archive_header.hash_table_offset as usize + archive_header.offset;
@@ -205,7 +206,9 @@ pub fn parse(orig_input: &[u8]) -> IResult<&[u8], MPQ> {
                     peek_hex(encrypted_hash_table_data),
                     err,
                 );
-                return Err(nom::Err::Incomplete(nom::Needed::Unknown));
+                return Err(MPQParserError::DecryptionDataWithKey(
+                    hash_table_key.to_string(),
+                ));
             }
         };
     let (_, hash_table_entries) = match count(
@@ -216,7 +219,7 @@ pub fn parse(orig_input: &[u8]) -> IResult<&[u8], MPQ> {
         Ok((tail, value)) => (tail, value),
         Err(err) => {
             tracing::error!("Unable to use decrypted data: {:?}", err);
-            return Err(nom::Err::Incomplete(nom::Needed::Unknown));
+            return Err(MPQParserError::IncompleteData);
         }
     };
     // "seek" to the block table offset.
@@ -225,19 +228,8 @@ pub fn parse(orig_input: &[u8]) -> IResult<&[u8], MPQ> {
         take(16usize * archive_header.block_table_entries as usize),
         "encrypted_block_table_data",
     )(&orig_input[block_table_offset..])?;
-    let decrypted_block_table_data =
-        match builder.mpq_data_decrypt(encrypted_block_table_data, block_table_key) {
-            Ok((_, value)) => value,
-            Err(err) => {
-                tracing::warn!(
-                    "Unabe to use key: '{}' to decrypt MPQBlockTable data: {}: {:?}",
-                    block_table_key,
-                    peek_hex(encrypted_block_table_data),
-                    err,
-                );
-                return Err(nom::Err::Incomplete(nom::Needed::Unknown));
-            }
-        };
+    let (_, decrypted_block_table_data) =
+        builder.mpq_data_decrypt(encrypted_block_table_data, block_table_key)?;
     let (_, block_table_entries) = match count(
         MPQBlockTableEntry::parse,
         archive_header.block_table_entries as usize,
@@ -246,7 +238,7 @@ pub fn parse(orig_input: &[u8]) -> IResult<&[u8], MPQ> {
         Ok((tail, value)) => (tail, value),
         Err(err) => {
             tracing::error!("Unable to use decrypted data: {:?}", err);
-            return Err(nom::Err::Incomplete(nom::Needed::Unknown));
+            return Err(MPQParserError::IncompleteData);
         }
     };
     let mpq = builder
@@ -288,8 +280,12 @@ mod tests {
     #[test]
     fn it_generates_hashes() {
         let builder = MPQBuilder::new();
-        let hash_table_key = builder.mpq_string_hash("(hash table)", MPQHashType::Table);
-        let block_table_key = builder.mpq_string_hash("(block table)", MPQHashType::Table);
+        let hash_table_key = builder
+            .mpq_string_hash("(hash table)", MPQHashType::Table)
+            .unwrap();
+        let block_table_key = builder
+            .mpq_string_hash("(block table)", MPQHashType::Table)
+            .unwrap();
         assert_eq!(hash_table_key, 0xc3af3770);
         assert_eq!(block_table_key, 0xec83b3a3);
         let encrypted_hash_table_data = vec![
