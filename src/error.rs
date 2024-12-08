@@ -38,6 +38,18 @@ pub enum MPQParserError {
     /// Unsupported Compression Type
     #[error("Invalid Compression Type: {0}")]
     UnsupportedCompression(u8),
+    /// Encryption Type not suported.
+    #[error("Encryption Type is not supported.")]
+    UnsupportedEncryptionType,
+    /// Invalid UTF-8 Sequence on MPQ listfile sector.
+    #[error("Invalid UTF-8 Sequence on section {0}")]
+    InvalidUTF8Sequence(String),
+    /// Invalid ListFile sector
+    #[error("Invalid ListFile sector")]
+    InvalidListFileSector,
+    /// Encryption table index not found
+    #[error("Encryption table index not found, check error messages")]
+    EncryptionTableIndexNotFound,
 }
 
 /// Conversion of errors from byte aligned parser

@@ -8,7 +8,8 @@ fn it_parses_patch_4_12_replay() {
     );
     let file_contents = parser::read_file(file_path);
     let (_input, mpq) = parser::parse(&file_contents).unwrap();
-    dbg!(mpq.get_files(&file_contents));
+    let mpq_listfiles_res = mpq.get_files(&file_contents);
+    assert!(mpq_listfiles_res.is_ok());
 }
 
 #[test]
@@ -46,8 +47,11 @@ fn mpyq_test_file_list() {
     let file_path = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/mpyq-test.SC2Replay");
     let file_contents = parser::read_file(file_path);
     let (_input, mpq) = parser::parse(&file_contents).unwrap();
+    let mpq_listfiles_res = mpq.get_files(&file_contents);
+    assert!(mpq_listfiles_res.is_ok());
+    let mpq_listfiles_res = mpq_listfiles_res.unwrap();
     assert_eq!(
-        mpq.get_files(&file_contents),
+        mpq_listfiles_res,
         vec![
             ("replay.attributes.events".to_string(), 2400usize),
             ("replay.details".to_string(), 890usize),

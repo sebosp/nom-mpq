@@ -41,11 +41,14 @@ fn main() {
     let file_contents = parser::read_file(&cli.source);
     let (_input, mpq) = parser::parse(&file_contents).unwrap();
     match &cli.command {
-        Commands::List => {
-            for (filename, size) in mpq.get_files(&file_contents) {
-                println!("{} {1:>8} bytes", filename, size);
+        Commands::List => match mpq.get_files(&file_contents) {
+            Err(e) => eprintln!("Error: {}", e),
+            Ok(mpq_listfiles_res) => {
+                for (filename, size) in mpq_listfiles_res {
+                    println!("{} {1:>8} bytes", filename, size);
+                }
             }
-        }
+        },
         Commands::ExtractFile { name } => {
             let (_tail, file_data) = mpq
                 .read_mpq_file_sector(name, false, &file_contents)
