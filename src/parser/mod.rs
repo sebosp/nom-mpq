@@ -179,7 +179,10 @@ pub fn read_headers(input: &[u8]) -> MPQResult<&[u8], (MPQFileHeader, Option<MPQ
             MPQFileHeader::parse(input, header_offset as usize)?
         }
         MPQSectionType::Header => MPQFileHeader::parse(input, 0)?,
-        MPQSectionType::Unknown => panic!("Unable to identify magic/section-type combination"),
+        MPQSectionType::Unknown => {
+            tracing::error!("Unable to identify magic/section-type combination");
+            return MPQResult::Err(MPQParserError::MissingArchiveHeader);
+        }
     };
     Ok((input, (archive_header, user_data)))
 }

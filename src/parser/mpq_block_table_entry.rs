@@ -5,13 +5,13 @@
 //! files (typically this space is from deleted file data), or unused block
 //! table entries.
 //! Empty space entries should have:
-//! - BlockOffset and BlockSize nonzero.
-//! - FileSize and Flags zero;
+//!     - BlockOffset and BlockSize nonzero.
+//!     - FileSize and Flags zero;
 //! Unused block table entries should have:
-//! - BlockSize, FileSize, and Flags zero.
+//!     - BlockSize, FileSize, and Flags zero.
 //! The block table is encrypted, using the hash of "(block table)" as the key.
 //! NOTES:
-//! - MPyQ uses struct_format: `'4I'`
+//!     - MPyQ uses struct_format: `'4I'`
 
 use super::LITTLE_ENDIAN;
 use nom::error::dbg_dmp;
