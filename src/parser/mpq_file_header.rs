@@ -164,9 +164,11 @@ impl MPQFileHeader {
 }
 
 #[cfg(test)]
+/// MPQ File Header Tests
 pub mod tests {
     use crate::parser::*;
 
+    /// Generates a valid basic file header
     pub fn basic_file_header() -> Vec<u8> {
         // struct_format: '<4s2I2H4I'
         vec![

@@ -104,10 +104,13 @@ impl MPQ {
             let hash_type_idx: u32 = hash_type.try_into()?;
             let value = match encryption_table.get(&((hash_type_idx << 8) + ch_ord)) {
                 Some(val) => val,
-                None => panic!(
-                    "Couldn't find index in map for: {}",
-                    (hash_type_idx << 8) + ch_ord
-                ),
+                None => {
+                    tracing::error!(
+                        "Couldn't find index in map for: {}",
+                        (hash_type_idx << 8) + ch_ord
+                    );
+                    return Err(MPQParserError::EncryptionTableIndexNotFound);
+                }
             };
             seed1 = (*value as u64 ^ (seed1 + seed2)) & 0xFFFFFFFFu64;
             seed2 = ch_ord as u64 + seed1 + seed2 + (seed2 << 5) + 3 & 0xFFFFFFFFu64;
@@ -156,7 +159,9 @@ impl MPQ {
                 let mut decompressor = bzip2_rs::DecoderReader::new(tail);
                 std::io::copy(&mut decompressor, &mut data)?;
             }
-            _ => panic!("Unsupported compression type: {}", compression_type),
+            unknown_version => {
+                return MPQResult::Err(MPQParserError::UnsupportedCompression(unknown_version));
+            }
         };
 
         Ok((tail, data))
@@ -189,7 +194,7 @@ impl MPQ {
 
         tracing::debug!("Block table data: {}", parser::peek_hex(file_data));
         if block_entry.flags & MPQ_FILE_ENCRYPTED != 0 {
-            panic!("Encryption is not supported");
+            return MPQResult::Err(MPQParserError::UnsupportedEncryptionType);
         }
         if block_entry.flags & MPQ_FILE_SINGLE_UNIT != 0 {
             tracing::debug!("File sector contains a single unit",);
@@ -299,7 +304,7 @@ impl MPQ {
     }
 
     /// Returns the list of filenames and their respective size as contained in the MPQ archive.
-    pub fn get_files(&self, orig_input: &[u8]) -> Vec<(String, usize)> {
+    pub fn get_files(&self, orig_input: &[u8]) -> Result<Vec<(String, usize)>, MPQParserError> {
         let mut res: Vec<(String, usize)> = vec![];
         let files: Vec<String> = match self.read_mpq_file_sector("(listfile)", false, orig_input) {
             Ok((_tail, file_buffer)) => {
@@ -310,12 +315,16 @@ impl MPQ {
                 match std::str::from_utf8(&file_buffer) {
                     Ok(val) => val.lines().map(|x| x.to_string()).collect(),
                     Err(err) => {
-                        panic!("Invalid UTF-8 sequence: {}", err);
+                        tracing::error!("Invalid UTF-8 sequence: {:?}", err);
+                        return Err(MPQParserError::InvalidUTF8Sequence(
+                            "(listfile)".to_string(),
+                        ));
                     }
                 }
             }
             Err(err) => {
-                panic!("Unable to read '(listfile)' sector: {:?}", err);
+                tracing::error!("Unable to read '(listfile)' sector: {:?}", err);
+                return Err(MPQParserError::InvalidListFileSector);
             }
         };
         for filename in files {
@@ -334,6 +343,6 @@ impl MPQ {
             tracing::debug!("{} {1:>8} bytes", filename, block_entry.size as usize);
             res.push((filename, block_entry.size as usize));
         }
-        res
+        Ok(res)
     }
 }

@@ -92,11 +92,14 @@ impl MPQUserData {
         // - user_data_header_size bytes
         let curr_read_byte_count = 16;
         if archive_header_offset < user_data_header_size + curr_read_byte_count {
-            panic!(
+            tracing::error!(
                 "Invalid archive_header_offset: {}, should be bigger than {}",
                 archive_header_offset,
                 user_data_header_size + curr_read_byte_count
             );
+            return Err(nom::Err::Incomplete(nom::Needed::new(
+                (user_data_header_size + curr_read_byte_count) as usize,
+            )));
         }
         let (input, _) = dbg_dmp(
             take((archive_header_offset - (user_data_header_size + curr_read_byte_count)) as usize),
@@ -107,10 +110,12 @@ impl MPQUserData {
 }
 
 #[cfg(test)]
+/// User Data Tests
 pub mod tests {
     use super::*;
     use crate::parser::*;
 
+    /// Generates a basic user data header
     pub fn basic_user_header() -> Vec<u8> {
         // - struct_format: '<4s3I'
         vec![
