@@ -156,7 +156,9 @@ impl MPQ {
                 let mut decompressor = bzip2_rs::DecoderReader::new(tail);
                 std::io::copy(&mut decompressor, &mut data)?;
             }
-            _ => panic!("Unsupported compression type: {}", compression_type),
+            unknown_version => {
+                return MPQResult::Err(MPQParserError::UnsupportedCompression(unknown_version));
+            }
         };
 
         Ok((tail, data))

@@ -35,6 +35,9 @@ pub enum MPQParserError {
     /// Invalid HashType number
     #[error("Invalid HashType number: {0}")]
     InvalidHashType(u32),
+    /// Unsupported Compression Type
+    #[error("Invalid Compression Type: {0}")]
+    UnsupportedCompression(u8),
 }
 
 /// Conversion of errors from byte aligned parser
