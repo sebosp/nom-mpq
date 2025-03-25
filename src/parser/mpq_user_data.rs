@@ -6,8 +6,8 @@
 //!     In this implementation the MPyQ version is honored.
 
 use super::LITTLE_ENDIAN;
+use crate::dbg_dmp;
 use nom::bytes::complete::take;
-use nom::error::dbg_dmp;
 use nom::number::complete::u32;
 use nom::*;
 

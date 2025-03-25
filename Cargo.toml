@@ -1,21 +1,21 @@
 [package]
 name = "nom-mpq"
 version = "2.0.3"
-edition = "2021"
+edition = "2024"
 license = "MIT"
 description = "A nom parser for the MoPaQ archive format"
 repository = "https://github.com/sebosp/nom-mpq"
 
 [dependencies]
-nom = "7.1.1"
-thiserror = "1.0.38"
+nom = "8.0.0"
+thiserror = "2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
 compress = "0.2"
 bzip2-rs = "0.1"
 clap = { version = "4.4", features = ["derive"] }
 serde_json = "1.0.91"
-convert_case = "0.6.0"
+convert_case = "0.8.0"
 
 
 [dev-dependencies]

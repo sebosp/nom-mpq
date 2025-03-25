@@ -10,10 +10,11 @@
 use crate::{MPQParserError, MPQResult};
 
 use super::{MPQBuilder, MPQ};
+use crate::dbg_dmp;
 use nom::bytes::complete::{tag, take};
-use nom::error::dbg_dmp;
 use nom::multi::count;
 use nom::number::Endianness;
+use nom::Parser;
 use std::convert::From;
 use std::convert::TryFrom;
 use std::fs::File;
@@ -42,7 +43,7 @@ pub static CHARS: &[u8] = b"0123456789abcdef";
 /// Validates the first three bytes of the magic, it must be followed by either the
 /// [`MPQ_ARCHIVE_HEADER_TYPE`] or the [`MPQ_USER_DATA_HEADER_TYPE`]
 fn validate_magic(input: &[u8]) -> MPQResult<&[u8], &[u8]> {
-    dbg_dmp(tag(b"MPQ"), "tag")(input).map_err(|e| e.into())
+    dbg_dmp(tag(&b"MPQ"[..]), "tag")(input).map_err(|e| e.into())
 }
 
 /// Different HashTypes used in MPQ Archives, they are used to identify
@@ -217,7 +218,8 @@ pub fn parse(orig_input: &[u8]) -> MPQResult<&[u8], MPQ> {
     let (_, hash_table_entries) = match count(
         MPQHashTableEntry::parse,
         archive_header.hash_table_entries as usize,
-    )(&decrypted_hash_table_data)
+    )
+    .parse(&decrypted_hash_table_data)
     {
         Ok((tail, value)) => (tail, value),
         Err(err) => {
@@ -236,7 +238,8 @@ pub fn parse(orig_input: &[u8]) -> MPQResult<&[u8], MPQ> {
     let (_, block_table_entries) = match count(
         MPQBlockTableEntry::parse,
         archive_header.block_table_entries as usize,
-    )(&decrypted_block_table_data)
+    )
+    .parse(&decrypted_block_table_data)
     {
         Ok((tail, value)) => (tail, value),
         Err(err) => {

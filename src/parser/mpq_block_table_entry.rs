@@ -14,7 +14,7 @@
 //!     - MPyQ uses struct_format: `'4I'`
 
 use super::LITTLE_ENDIAN;
-use nom::error::dbg_dmp;
+use crate::dbg_dmp;
 use nom::number::complete::u32;
 use nom::*;
 
