@@ -6,8 +6,8 @@
 #![warn(missing_docs)]
 pub use error::MPQResult;
 use nom::bytes::complete::take;
-use nom::error::dbg_dmp;
 use nom::number::complete::{i32, u32, u8};
+use nom::HexDisplay;
 use nom::IResult;
 use parser::MPQHashType;
 use std::collections::HashMap;
@@ -25,6 +25,22 @@ pub use parser::MPQHashTableEntry;
 pub use parser::MPQUserData;
 use parser::LITTLE_ENDIAN;
 
+/// TEMP waiting for https://github.com/rust-bakery/nom/pull/1845 to be merged/released.
+pub fn dbg_dmp<'a, F, O, E: std::fmt::Debug>(
+    mut f: F,
+    context: &'static str,
+) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], O, E>
+where
+    F: FnMut(&'a [u8]) -> IResult<&'a [u8], O, E>,
+{
+    move |i: &'a [u8]| match f(i) {
+        Err(e) => {
+            println!("{}: Error({:?}) at:\n{}", context, e, i.to_hex(8));
+            Err(e)
+        }
+        a => a,
+    }
+}
 // Unused flags:
 // pub const MPQ_FILE_IMPLODE: u32 = 0x00000100;
 // pub const MPQ_FILE_FIX_KEY: u32 = 0x00020000;
