@@ -3,7 +3,7 @@
 //! - MPyQ uses struct_format: 'q2h'
 
 use super::LITTLE_ENDIAN;
-use nom::error::dbg_dmp;
+use crate::dbg_dmp;
 use nom::number::complete::{i16, i64};
 use nom::*;
 

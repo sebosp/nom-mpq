@@ -26,7 +26,7 @@
 //!   - In this implementation the u16 MPyQ version is honored.
 
 use super::LITTLE_ENDIAN;
-use nom::error::dbg_dmp;
+use crate::dbg_dmp;
 use nom::number::complete::{u16, u32};
 use nom::*;
 
