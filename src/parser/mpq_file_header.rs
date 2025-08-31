@@ -2,8 +2,8 @@
 //! NOTES:
 //! - MPyQ uses struct_format: '<4s2I2H4I'
 
-use super::MPQFileHeaderExt;
 use super::LITTLE_ENDIAN;
+use super::MPQFileHeaderExt;
 use crate::dbg_dmp;
 use nom::number::complete::{u16, u32};
 use nom::*;
@@ -96,9 +96,9 @@ impl MPQFileHeader {
     /// MoPaQ format version. MPQAPI will not open archives where
     /// this is negative. Known versions:
     /// - `0x0000` Original format. HeaderSize should be `0x20`, and large
-    ///          archives are not supported.
+    ///   archives are not supported.
     /// - `0x0001` Burning Crusade format. Header size should be `0x2c`,
-    ///          and large archives are supported.
+    ///   and large archives are supported.
     pub fn parse_format_version(input: &[u8]) -> IResult<&[u8], u16> {
         dbg_dmp(u16(LITTLE_ENDIAN), "format_version")(input)
     }
