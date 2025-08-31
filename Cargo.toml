@@ -1,6 +1,6 @@
 [package]
 name = "nom-mpq"
-version = "2.0.4"
+version = "2.0.5"
 edition = "2024"
 license = "MIT"
 description = "A nom parser for the MoPaQ archive format"
