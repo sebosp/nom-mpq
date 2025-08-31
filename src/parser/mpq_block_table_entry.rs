@@ -98,21 +98,21 @@ impl MPQBlockTableEntry {
     /// Bit mask of the flags for the block.
     /// The following values are conclusively identified:
     /// - `0x80000000` Block is a file, and follows the file data format;
-    ///              otherwise, block is free space or unused.
-    ///              If the block is not a file, all other flags should be
-    ///              cleared, and FileSize should be 0.
+    ///   otherwise, block is free space or unused.
+    ///   If the block is not a file, all other flags should be
+    ///   cleared, and FileSize should be 0.
     /// - `0x04000000` File has checksums for each sector (explained in the
-    ///              File Data section). Ignored if file is not compressed
-    ///              or imploded.
+    ///   File Data section). Ignored if file is not compressed
+    ///   or imploded.
     /// - `0x02000000` File is a deletion marker, indicating that the file no
-    ///              longer exists. This is used to allow patch archives to
-    ///              delete files present in lower-priority archives in the
-    ///              search chain.
+    ///   longer exists. This is used to allow patch archives to
+    ///   delete files present in lower-priority archives in the
+    ///   search chain.
     /// - `0x01000000` File is stored as a single unit, rather than split into
-    ///              sectors.
+    ///   sectors.
     /// - `0x00020000` The file's encryption key is adjusted by the block offset
-    ///              and file size (explained in detail in the File Data
-    ///              section). File must be encrypted.
+    ///   and file size (explained in detail in the File Data
+    ///   section). File must be encrypted.
     /// - `0x00010000` File is encrypted.
     /// - `0x00000200` File is compressed. File cannot be imploded.
     /// - `0x00000100` File is imploded. File cannot be compressed.

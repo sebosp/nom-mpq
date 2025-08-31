@@ -1,23 +1,41 @@
 [package]
 name = "nom-mpq"
-version = "2.0.4"
+version = "2.0.5"
 edition = "2024"
 license = "MIT"
 description = "A nom parser for the MoPaQ archive format"
 repository = "https://github.com/sebosp/nom-mpq"
+keywords = ["sc2replay", "starcraft2", "mpq", "MoPaQ"]
+categories = ["games", "parsing"]
 
 [dependencies]
 nom = "8.0.0"
 thiserror = "2"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
 compress = "0.2"
 bzip2-rs = "0.1"
-clap = { version = "4.4", features = ["derive"] }
-serde_json = "1.0.91"
+clap = { version = "4.5", features = ["derive"] }
+serde_json = "1.0.143"
 convert_case = "0.8.0"
 
 
 [dev-dependencies]
 test-log = { version = "0.2", default-features = false, features = ["trace"] }
-tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
+
+[features]
+default = ["tracing_debug_level"]
+tracing_off = ["tracing/max_level_off", "tracing/release_max_level_off"]
+tracing_trace_level = [
+  "tracing/max_level_trace",
+  "tracing/release_max_level_trace",
+]
+tracing_debug_level = [
+  "tracing/max_level_debug",
+  "tracing/release_max_level_debug",
+]
+tracing_info_level = [
+  "tracing/max_level_info",
+  "tracing/release_max_level_info",
+]
