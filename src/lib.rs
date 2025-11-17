@@ -5,10 +5,9 @@
 
 #![warn(missing_docs)]
 pub use error::MPQResult;
-use nom::bytes::complete::take;
-use nom::number::complete::{i32, u32, u8};
-use nom::HexDisplay;
 use nom::IResult;
+use nom::bytes::complete::take;
+use nom::number::complete::{i32, u8, u32};
 use parser::MPQHashType;
 use std::collections::HashMap;
 use std::io::Read;
@@ -19,11 +18,11 @@ pub mod parser;
 pub use builder::MPQBuilder;
 use compress::zlib;
 pub use error::MPQParserError;
+use parser::LITTLE_ENDIAN;
 pub use parser::MPQBlockTableEntry;
 pub use parser::MPQFileHeader;
 pub use parser::MPQHashTableEntry;
 pub use parser::MPQUserData;
-use parser::LITTLE_ENDIAN;
 
 /// TEMP waiting for https://github.com/rust-bakery/nom/pull/1845 to be merged/released.
 pub fn dbg_dmp<'a, F, O, E: std::fmt::Debug>(
@@ -35,7 +34,12 @@ where
 {
     move |i: &'a [u8]| match f(i) {
         Err(e) => {
-            println!("{}: Error({:?}) at:\n{}", context, e, i.to_hex(8));
+            tracing::debug!(
+                "{}: Error({:.32}) at: {}",
+                context,
+                e.to_string(),
+                parser::peek_hex(i)
+            );
             Err(e)
         }
         a => a,
@@ -151,7 +155,6 @@ impl MPQ {
                 return Ok(entry.clone());
             }
         }
-        tracing::warn!("Unable to find hash table entry for {}", filename);
         Err(MPQParserError::HashTableEntryNotFound(filename.to_string()))
     }
 
