@@ -16,8 +16,8 @@ pub mod builder;
 pub mod error;
 pub mod parser;
 pub use builder::MPQBuilder;
-use compress::zlib;
 pub use error::MPQParserError;
+use flate2::bufread::ZlibDecoder;
 use parser::LITTLE_ENDIAN;
 pub use parser::MPQBlockTableEntry;
 pub use parser::MPQFileHeader;
@@ -169,7 +169,7 @@ impl MPQ {
             }
             COMPRESSION_ZLIB => {
                 tracing::debug!("Attempting ZLIB compression",);
-                let mut d = zlib::Decoder::new(std::io::BufReader::new(tail));
+                let mut d = ZlibDecoder::new(std::io::BufReader::new(tail));
 
                 let _ = d.read_to_end(&mut data)?;
             }
