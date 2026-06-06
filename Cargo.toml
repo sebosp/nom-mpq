@@ -12,20 +12,18 @@ categories = ["games", "parsing"]
 nom = "8.0.0"
 thiserror = "2"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 flate2 = "1.1"
 bzip2-rs = "0.1"
-clap = { version = "4.6", features = ["derive"] }
-serde_json = "1.0.149"
-convert_case = "0.11.0"
-
+serde_json = "1.0"
+convert_case = "0.11"
 
 [dev-dependencies]
 test-log = { version = "0.2", default-features = false, features = ["trace"] }
-tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+clap = { version = "4.6", features = ["derive"] }
 
 [features]
-default = ["tracing_off"]
+default = ["tracing_info_level"]
 tracing_off = ["tracing/max_level_off", "tracing/release_max_level_off"]
 tracing_trace_level = [
   "tracing/max_level_trace",
