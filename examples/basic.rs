@@ -1,5 +1,6 @@
 use clap::{Parser, Subcommand};
 use nom_mpq::*;
+use std::fs::File;
 use std::io::Write;
 
 #[derive(Subcommand)]
@@ -11,6 +12,12 @@ enum Commands {
         /// lists test values
         #[arg(short, long)]
         name: String,
+    },
+    /// Extract a file from the archive
+    ExtractAllFiles {
+        /// lists test values
+        #[arg(short, long)]
+        path: String,
     },
     /// Extract a header from the archive
     ExtractHeader {
@@ -59,6 +66,29 @@ fn main() {
             }
             let _ = std::io::stdout().flush();
         }
+        Commands::ExtractAllFiles { path } => match mpq.get_files(&file_contents) {
+            Err(e) => eprintln!("Error: {}", e),
+            Ok(mpq_listfiles_res) => {
+                for (filename, size) in mpq_listfiles_res {
+                    let safe_filename = format!("{path}/{}", filename.replace("\\", "_"));
+                    println!(
+                        "{} renamed to {} {2:>8} bytes",
+                        filename, safe_filename, size
+                    );
+                    let mut output_file =
+                        File::create(safe_filename).expect("Unable to create output file");
+                    let (_tail, file_data) = mpq
+                        .read_mpq_file_sector(&filename, false, &file_contents)
+                        .unwrap();
+                    for word in file_data {
+                        let bytes = word.to_le_bytes();
+                        output_file
+                            .write_all(&bytes)
+                            .expect("Unable to write chunk to file");
+                    }
+                }
+            }
+        },
         Commands::ExtractHeader { name } => match name.as_ref() {
             "user_data.content" => {
                 let user_data = mpq
