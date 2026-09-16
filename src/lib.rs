@@ -67,6 +67,8 @@ pub const COMPRESSION_PLAINTEXT: u8 = 0;
 pub const COMPRESSION_ZLIB: u8 = 2;
 /// The sector is compressed using [`bzip2`]
 pub const COMPRESSION_BZ2: u8 = 16;
+/// Another non-compressed plaintext
+pub const OTHER_COMPRESSION_PLAINTEXT: u8 = 47;
 
 /// The main MPQ object that contains the parsed entries
 #[derive(Debug, Default)]
@@ -163,7 +165,7 @@ impl MPQ {
         let mut data = vec![];
         let (tail, compression_type) = dbg_dmp(u8, "compression_type")(input)?;
         match compression_type {
-            COMPRESSION_PLAINTEXT => {
+            COMPRESSION_PLAINTEXT | OTHER_COMPRESSION_PLAINTEXT => {
                 tracing::debug!("Plaintext (no compression)");
                 data = tail[..].to_vec()
             }
@@ -179,6 +181,7 @@ impl MPQ {
                 std::io::copy(&mut decompressor, &mut data)?;
             }
             unknown_version => {
+                tracing::debug!("File header is: {}", parser::peek_hex(tail));
                 return MPQResult::Err(MPQParserError::UnsupportedCompression(unknown_version));
             }
         };
