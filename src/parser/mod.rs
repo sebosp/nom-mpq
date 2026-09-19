@@ -9,12 +9,12 @@
 
 use crate::{MPQParserError, MPQResult};
 
-use super::{MPQBuilder, MPQ};
+use super::{MPQ, MPQBuilder};
 use crate::dbg_dmp;
+use nom::Parser;
 use nom::bytes::complete::{tag, take};
 use nom::multi::count;
 use nom::number::Endianness;
-use nom::Parser;
 use std::convert::From;
 use std::convert::TryFrom;
 use std::fs::File;
@@ -25,6 +25,8 @@ pub mod mpq_file_header;
 pub mod mpq_file_header_ext;
 pub mod mpq_hash_table_entry;
 pub mod mpq_user_data;
+#[cfg(feature = "nom_color_debug")]
+use console::style;
 pub use mpq_block_table_entry::MPQBlockTableEntry;
 pub use mpq_file_header::MPQFileHeader;
 pub use mpq_file_header_ext::MPQFileHeaderExt;
@@ -109,49 +111,121 @@ impl From<&[u8]> for MPQSectionType {
         }
     }
 }
+/// Returns a coloreplaind text version of an xxd-like first 8 byte of a string.
+pub fn peek_hex_color(data: &[u8]) -> String {
+    let max_length = 8usize;
+    let chunk = &data[0..max_length.min(data.len())];
+
+    let mut res = String::with_capacity(max_length * 3);
+    res.push('[');
+    let mut even_space = false;
+    // Prepend spaces, in case the number of bits is less than max_length
+    for &byte in chunk {
+        match byte {
+            0 => res.push_str(&style("00").blue().force_styling(true).to_string()),
+            (32..=126) => res.push_str(
+                &style(format!(
+                    "{}{}",
+                    CHARS[(byte >> 4) as usize] as char,
+                    CHARS[(byte & 0xf) as usize] as char
+                ))
+                .green()
+                .force_styling(true)
+                .to_string(),
+            ),
+            _ => res.push_str(
+                &style(format!(
+                    "{}{}",
+                    CHARS[(byte >> 4) as usize] as char,
+                    CHARS[(byte & 0xf) as usize] as char
+                ))
+                .white()
+                .force_styling(true)
+                .to_string(),
+            ),
+        }
+        if even_space {
+            res.push(' ');
+        }
+        even_space = !even_space;
+    }
+    for _ in data.len()..max_length {
+        res.push(' ');
+        res.push(' ');
+        if even_space {
+            res.push(' ');
+        }
+        even_space = !even_space;
+    }
+    res.push(' ');
+
+    for &byte in chunk {
+        match byte {
+            0 => res.push_str(&style(".").blue().force_styling(true).to_string()),
+            (32..=126) => {
+                res.push_str(&style(byte as char).green().force_styling(true).to_string())
+            }
+            _ => res.push('.'),
+        }
+    }
+    for _ in data.len()..max_length {
+        res.push(' ');
+    }
+    res.push(']');
+    res.push(',');
+    res.pop();
+    res
+}
 
 /// A helper function that shows only up to the first 8 bytes of an u8 slice in
 /// xxd format.
 pub fn peek_hex(data: &[u8]) -> String {
-    let mut max_length = 8usize;
-    if data.len() < max_length {
-        max_length = data.len();
-    }
-    let data = &data[0..max_length];
-    let chunk_size = 8usize;
-    let mut v = Vec::with_capacity(data.len() * 3);
-    for chunk in data.chunks(chunk_size) {
-        v.push(b'[');
-        let mut even_space = false;
-        for &byte in chunk {
-            v.push(CHARS[(byte >> 4) as usize]);
-            v.push(CHARS[(byte & 0xf) as usize]);
-            if even_space {
-                v.push(b' ');
-            }
-            even_space = !even_space;
-        }
-        if chunk_size > chunk.len() {
-            for _j in 0..(chunk_size - chunk.len()) {
-                v.push(b' ');
-                v.push(b' ');
-                v.push(b' ');
-            }
-        }
-        v.push(b' ');
+    #[cfg(feature = "nom_color_debug")]
+    return peek_hex_color(data);
+    #[cfg(not(feature = "nom_color_debug"))]
+    return peek_hex_plain(data);
+}
+/// Returns a plain text version of an xxd-like first 8 byte of a string.
+pub fn peek_hex_plain(data: &[u8]) -> String {
+    let max_length = 8usize;
+    let chunk = &data[0..max_length.min(data.len())];
 
-        for &byte in chunk {
-            if (32..=126).contains(&byte) {
-                v.push(byte);
-            } else {
-                v.push(b'.');
-            }
+    let mut res = Vec::with_capacity(max_length * 3);
+    res.push(b'[');
+    let mut even_space = false;
+    // Prepend spaces, in case the number of bits is less than max_length
+    for &byte in chunk {
+        res.push(CHARS[(byte >> 4) as usize]);
+        res.push(CHARS[(byte & 0xf) as usize]);
+        if even_space {
+            res.push(b' ');
         }
-        v.push(b']');
-        v.push(b',');
+        even_space = !even_space;
     }
-    v.pop();
-    String::from_utf8_lossy(&v[..]).into_owned()
+    for _ in data.len()..max_length {
+        res.push(b' ');
+        res.push(b' ');
+        if even_space {
+            res.push(b' ');
+        }
+        even_space = !even_space;
+    }
+    res.push(b' ');
+
+    for &byte in chunk {
+        if (32..=126).contains(&byte) {
+            res.push(byte);
+        } else {
+            res.push(b'.');
+        }
+    }
+    for _ in data.len()..max_length {
+        res.push(b' ');
+    }
+    res.push(b']');
+    res.push(b',');
+    res.pop();
+    String::from_utf8_lossy(&res[..]).into_owned()
 }
 
 /// Gets the header type from the MPQ file
