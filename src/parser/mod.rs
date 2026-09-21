@@ -116,13 +116,28 @@ pub fn peek_hex_color(data: &[u8]) -> String {
     let max_length = 8usize;
     let chunk = &data[0..max_length.min(data.len())];
 
-    let mut res = String::with_capacity(max_length * 3);
-    res.push('[');
+    // there's a hex representation, each byte becomes 2 characters. 8 * 2
+    // HEX section: potentially every character is colored.
+    // 3 characters for ansi color start.
+    // 2 character for the byte value.
+    // 3 characters for the ansi color reset.
+    // HEX section count: 8 positions * 8 bytes = 64
+    // ASCII section: potentially every character is colored.
+    // 3 characters for ansi color start.
+    // 1 character for the byte value.
+    // 3 characters for the ansi color reset.
+    // ASCII section count: 7 positions * 8 bytes = 56
+    // There are colored open and closing bracket characters. = 2 * 7 = 14
+    // there are 5 space separators in between the hex = 5
+    // Total = 64 + 56 + 14 = 139 characters
+    // But let's alignt to 256 as we add more context?
+    let mut res = String::with_capacity(256);
+    res.push_str(&style("[").cyan().bright().force_styling(true).to_string());
     let mut even_space = false;
     // Prepend spaces, in case the number of bits is less than max_length
     for &byte in chunk {
         match byte {
-            0 => res.push_str(&style("00").blue().force_styling(true).to_string()),
+            0 => res.push_str(&style("00").dim().on_black().force_styling(true).to_string()),
             (32..=126) => res.push_str(
                 &style(format!(
                     "{}{}",
@@ -161,7 +176,7 @@ pub fn peek_hex_color(data: &[u8]) -> String {
 
     for &byte in chunk {
         match byte {
-            0 => res.push_str(&style(".").blue().force_styling(true).to_string()),
+            0 => res.push_str(&style(".").dim().on_black().force_styling(true).to_string()),
             (32..=126) => {
                 res.push_str(&style(byte as char).green().force_styling(true).to_string())
             }
@@ -171,7 +186,7 @@ pub fn peek_hex_color(data: &[u8]) -> String {
     for _ in data.len()..max_length {
         res.push(' ');
     }
-    res.push(']');
+    res.push_str(&style("]").cyan().bright().force_styling(true).to_string());
     res.push(',');
     res.pop();
     res
