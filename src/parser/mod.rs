@@ -112,6 +112,7 @@ impl From<&[u8]> for MPQSectionType {
     }
 }
 /// Returns a coloreplaind text version of an xxd-like first 8 byte of a string.
+#[cfg(feature = "nom_color_debug")]
 pub fn peek_hex_color(data: &[u8]) -> String {
     let max_length = 8usize;
     let chunk = &data[0..max_length.min(data.len())];
