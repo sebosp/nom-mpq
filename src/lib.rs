@@ -189,6 +189,34 @@ impl MPQ {
         Ok((tail, data))
     }
 
+    /// Joins the sectors of a file, `positions` are their offsets in `file_data` and the end of
+    /// the last one. A sector is compressed only when that saves at least a byte, a sector that
+    /// does not compress is stored as it is, without the compression type, i.e. the last sectors
+    /// of a replay.game.events. Whether a sector is compressed is known from the bytes of the file
+    /// left, so the bytes of each sector once decompressed are counted, as MPyQ does.
+    fn read_sectors(
+        file_data: &[u8],
+        positions: &[usize],
+        file_size: usize,
+        compressed: bool,
+        force_decompress: bool,
+    ) -> Result<Vec<u8>, MPQParserError> {
+        let mut res = vec![];
+        let mut sector_bytes_left = file_size;
+        for window in positions.windows(2) {
+            let sector = &file_data[window[0]..window[1]];
+            let mut sector = if compressed && (force_decompress || sector_bytes_left > sector.len())
+            {
+                Self::decompress(sector)?.1
+            } else {
+                sector.to_vec()
+            };
+            sector_bytes_left = sector_bytes_left.saturating_sub(sector.len());
+            res.append(&mut sector);
+        }
+        Ok(res)
+    }
+
     /// Reads an embedded file inside the MPQ archive.
     #[tracing::instrument(level = "debug", skip(self, orig_input))]
     pub fn read_mpq_file_sector<'a>(
@@ -256,26 +284,17 @@ impl MPQ {
                 positions.push(position as usize);
                 position_file_index = new_pos_idx;
             }
-            let mut sector_bytes_left = block_entry.size as usize;
             let mut total_sectors = positions.len() - 1;
             if crc {
                 total_sectors -= 1;
             }
-
-            for i in 0..total_sectors {
-                let mut sector = file_data[positions[i]..positions[i + 1]].to_vec();
-                if block_entry.flags & MPQ_FILE_COMPRESS != 0
-                    && (force_decompress || sector_bytes_left > sector.len())
-                {
-                    let (_tail, mut decompressed_sector) =
-                        Self::decompress(&file_data[positions[i]..positions[i + 1]])?;
-                    res.append(&mut decompressed_sector);
-                } else {
-                    res.append(&mut sector);
-                }
-
-                sector_bytes_left -= sector.len();
-            }
+            let res = Self::read_sectors(
+                file_data,
+                &positions[..total_sectors + 1],
+                block_entry.size as usize,
+                block_entry.flags & MPQ_FILE_COMPRESS != 0,
+                force_decompress,
+            )?;
             return Ok((tail, res));
         }
         Ok((tail, file_data.to_vec()))
@@ -366,5 +385,46 @@ impl MPQ {
             res.push((filename, block_entry.size as usize));
         }
         Ok(res)
+    }
+}
+
+#[cfg(test)]
+mod sector_tests {
+    use super::*;
+    use std::io::Write;
+
+    fn zlib_sector(data: &[u8]) -> Vec<u8> {
+        let mut encoder = flate2::write::ZlibEncoder::new(vec![], flate2::Compression::best());
+        encoder.write_all(data).unwrap();
+        let mut sector = vec![COMPRESSION_ZLIB];
+        sector.extend(encoder.finish().unwrap());
+        sector
+    }
+
+    #[test]
+    fn it_reads_the_sectors_stored_without_compression() {
+        // A sector that compresses, then one that does not, stored as it is and starting with a
+        // byte that is not a compression type.
+        let first = vec![7u8; 4096];
+        let second: Vec<u8> = (0..1000u32)
+            .map(|idx| (idx.wrapping_mul(2654435761) >> 24) as u8 | 0x41)
+            .collect();
+        let mut second = second;
+        second[0] = 0x57;
+        let first_sector = zlib_sector(&first);
+        let mut file_data = first_sector.clone();
+        file_data.extend(&second);
+        let positions = [0, first_sector.len(), file_data.len()];
+        let res = MPQ::read_sectors(
+            &file_data,
+            &positions,
+            first.len() + second.len(),
+            true,
+            false,
+        )
+        .unwrap();
+        assert_eq!(res.len(), first.len() + second.len());
+        assert_eq!(&res[..first.len()], &first[..]);
+        assert_eq!(&res[first.len()..], &second[..]);
     }
 }
