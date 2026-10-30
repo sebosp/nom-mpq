@@ -3,7 +3,7 @@
 use crate::{MPQParserError, MPQResult};
 
 use super::parser::peek_hex;
-use super::{MPQBlockTableEntry, MPQFileHeader, MPQHashTableEntry, MPQHashType, MPQUserData, MPQ};
+use super::{MPQ, MPQBlockTableEntry, MPQFileHeader, MPQHashTableEntry, MPQHashType, MPQUserData};
 use std::collections::HashMap;
 
 /// A builder for the MPQ parsing, allowing for building the archive progressively
