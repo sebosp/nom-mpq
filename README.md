@@ -61,6 +61,12 @@ replay.tracker.events  1539841 bytes
 
 ## Changelog
 
+###  2.0.12
+
+- The sectors stored without compression after compressed ones are read: the bytes left of a
+  file were counted with the stored size of the sectors instead of the decompressed one, a sector
+  that did not compress was read as compressed and failed with `UnsupportedCompression`.
+
 ###  2.0.5
 
 - tracing_off feature flag for enhanced performance.
