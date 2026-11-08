@@ -61,6 +61,11 @@ replay.tracker.events  1539841 bytes
 
 ## Changelog
 
+###  2.0.13
+- `MPQParserError::StandardData`: a map names a mod of the game with a small text file instead of
+  an archive (`Standard Data: Liberty.SC2Mod`), `parse` tells it with the name of the mod instead
+  of failing on its header.
+
 ###  2.0.12
 
 - The sectors stored without compression after compressed ones are read: the bytes left of a

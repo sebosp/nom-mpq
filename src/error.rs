@@ -11,6 +11,10 @@ pub type MPQResult<I, O> = Result<(I, O), MPQParserError>;
 /// Error handling for upstream crates to use
 #[derive(Error, Debug)]
 pub enum MPQParserError {
+    /// The file is not an archive: a map names a mod of the game with a small text file instead,
+    /// i.e. `Standard Data: Liberty.SC2Mod`, the value holds the name of the mod.
+    #[error("Not an archive, it names the standard data {0}")]
+    StandardData(String),
     /// Mising Archive Header
     #[error("Missing Archive Header")]
     MissingArchiveHeader,

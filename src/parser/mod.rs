@@ -42,6 +42,16 @@ pub const LITTLE_ENDIAN: Endianness = Endianness::Little;
 /// The characters used as displayable by [`peek_hex`]
 pub static CHARS: &[u8] = b"0123456789abcdef";
 
+/// The start of the files that name a mod of the game instead of being an MPQ archive.
+pub const STANDARD_DATA_PREFIX: &[u8] = b"Standard Data: ";
+
+/// The name of the mod when the input is a `Standard Data: <name>` file, not an archive.
+pub fn standard_data_name(input: &[u8]) -> Option<String> {
+    input
+        .strip_prefix(STANDARD_DATA_PREFIX)
+        .map(|name| String::from_utf8_lossy(name).trim_end().to_string())
+}
+
 /// Validates the first three bytes of the magic, it must be followed by either the
 /// [`MPQ_ARCHIVE_HEADER_TYPE`] or the [`MPQ_USER_DATA_HEADER_TYPE`]
 fn validate_magic(input: &[u8]) -> MPQResult<&[u8], &[u8]> {
@@ -280,6 +290,9 @@ pub fn read_headers(input: &[u8]) -> MPQResult<&[u8], (MPQFileHeader, Option<MPQ
 
 /// Parses the whole input into an MPQ
 pub fn parse(orig_input: &[u8]) -> MPQResult<&[u8], MPQ> {
+    if let Some(name) = standard_data_name(orig_input) {
+        return Err(MPQParserError::StandardData(name));
+    }
     let builder = MPQBuilder::new();
     let hash_table_key = builder.mpq_string_hash("(hash table)", MPQHashType::Table)?;
     let block_table_key = builder.mpq_string_hash("(block table)", MPQHashType::Table)?;
@@ -362,6 +375,16 @@ mod tests {
     use super::mpq_user_data::tests::basic_user_header;
     use super::*;
     use test_log::test;
+
+    #[test]
+    fn it_names_the_standard_data_files_that_are_not_archives() {
+        let parsed = parse(b"Standard Data: Liberty.SC2Mod");
+        assert!(
+            matches!(&parsed, Err(MPQParserError::StandardData(name)) if name == "Liberty.SC2Mod"),
+            "{parsed:?}"
+        );
+        assert_eq!(standard_data_name(b"MPQ\x1a"), None);
+    }
 
     #[test]
     fn it_parses_headers() {
