@@ -225,7 +225,7 @@ impl MPQ {
         force_decompress: bool,
         orig_input: &'a [u8],
     ) -> MPQResult<&'a [u8], Vec<u8>> {
-        let mut res = vec![];
+        let res = vec![];
         let hash_entry = self.get_hash_table_entry(filename)?;
         let block_entry = self.block_table_entries[hash_entry.block_table_index as usize].clone();
         tracing::debug!("block_entry {:?}", block_entry);
