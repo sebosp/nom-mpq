@@ -302,7 +302,11 @@ pub fn parse(orig_input: &[u8]) -> MPQResult<&[u8], MPQ> {
     let (_, encrypted_hash_table_data) = dbg_dmp(
         take(16usize * archive_header.hash_table_entries as usize),
         "encrypted_hash_table_data",
-    )(&orig_input[hash_table_offset..])?;
+    )(
+        orig_input
+            .get(hash_table_offset..)
+            .ok_or(MPQParserError::IncompleteData)?,
+    )?;
     let decrypted_hash_table_data =
         match builder.mpq_data_decrypt(encrypted_hash_table_data, hash_table_key) {
             Ok((_, value)) => value,
@@ -335,7 +339,11 @@ pub fn parse(orig_input: &[u8]) -> MPQResult<&[u8], MPQ> {
     let (_, encrypted_block_table_data) = dbg_dmp(
         take(16usize * archive_header.block_table_entries as usize),
         "encrypted_block_table_data",
-    )(&orig_input[block_table_offset..])?;
+    )(
+        orig_input
+            .get(block_table_offset..)
+            .ok_or(MPQParserError::IncompleteData)?,
+    )?;
     let (_, decrypted_block_table_data) =
         builder.mpq_data_decrypt(encrypted_block_table_data, block_table_key)?;
     let (_, block_table_entries) = match count(

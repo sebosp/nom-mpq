@@ -165,3 +165,17 @@ fn mpyq_test_block_table() {
     expected_entries.push(MPQBlockTableEntry::new(0x00031E56, 254, 288, 0x81000200u32));
     assert_eq!(mpq.block_table_entries, expected_entries);
 }
+
+#[test]
+fn truncated_archives_are_errors_not_panics() {
+    // A replay cut short (an interrupted download) points its tables and files past its end.
+    let file_path = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/mpyq-test.SC2Replay");
+    let file_contents = parser::read_file(file_path);
+    for len in (0..file_contents.len()).step_by(997) {
+        let truncated = &file_contents[..len];
+        if let Ok((_input, mpq)) = parser::parse(truncated) {
+            let _ = mpq.get_files(truncated);
+            let _ = mpq.read_mpq_file_sector("replay.details", false, truncated);
+        }
+    }
+}

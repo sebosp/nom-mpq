@@ -61,6 +61,11 @@ replay.tracker.events  1539841 bytes
 
 ## Changelog
 
+###  2.0.14
+- An archive cut short (an interrupted download) is an `IncompleteData` error instead of a panic:
+  the hash table, block table and files that point past its end are checked before they are read,
+  and `get_files` skips the names whose block table entry is missing.
+
 ###  2.0.13
 - `MPQParserError::StandardData`: a map names a mod of the game with a small text file instead of
   an archive (`Standard Data: Liberty.SC2Mod`), `parse` tells it with the name of the mod instead
