@@ -288,6 +288,15 @@ pub fn read_headers(input: &[u8]) -> MPQResult<&[u8], (MPQFileHeader, Option<MPQ
     Ok((input, (archive_header, user_data)))
 }
 
+/// The `len` bytes of `input` at `offset`, or `IncompleteData` when the input ends before them:
+/// an archive cut short (an interrupted download) points its tables and files past its end.
+pub(crate) fn bytes_at(input: &[u8], offset: usize, len: usize) -> Result<&[u8], MPQParserError> {
+    offset
+        .checked_add(len)
+        .and_then(|end| input.get(offset..end))
+        .ok_or(MPQParserError::IncompleteData)
+}
+
 /// Parses the whole input into an MPQ
 pub fn parse(orig_input: &[u8]) -> MPQResult<&[u8], MPQ> {
     if let Some(name) = standard_data_name(orig_input) {
@@ -302,7 +311,11 @@ pub fn parse(orig_input: &[u8]) -> MPQResult<&[u8], MPQ> {
     let (_, encrypted_hash_table_data) = dbg_dmp(
         take(16usize * archive_header.hash_table_entries as usize),
         "encrypted_hash_table_data",
-    )(&orig_input[hash_table_offset..])?;
+    )(bytes_at(
+        orig_input,
+        hash_table_offset,
+        16usize * archive_header.hash_table_entries as usize,
+    )?)?;
     let decrypted_hash_table_data =
         match builder.mpq_data_decrypt(encrypted_hash_table_data, hash_table_key) {
             Ok((_, value)) => value,
@@ -335,7 +348,11 @@ pub fn parse(orig_input: &[u8]) -> MPQResult<&[u8], MPQ> {
     let (_, encrypted_block_table_data) = dbg_dmp(
         take(16usize * archive_header.block_table_entries as usize),
         "encrypted_block_table_data",
-    )(&orig_input[block_table_offset..])?;
+    )(bytes_at(
+        orig_input,
+        block_table_offset,
+        16usize * archive_header.block_table_entries as usize,
+    )?)?;
     let (_, decrypted_block_table_data) =
         builder.mpq_data_decrypt(encrypted_block_table_data, block_table_key)?;
     let (_, block_table_entries) = match count(

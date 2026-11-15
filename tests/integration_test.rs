@@ -165,3 +165,99 @@ fn mpyq_test_block_table() {
     expected_entries.push(MPQBlockTableEntry::new(0x00031E56, 254, 288, 0x81000200u32));
     assert_eq!(mpq.block_table_entries, expected_entries);
 }
+
+fn mpyq_test_replay() -> Vec<u8> {
+    parser::read_file(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/assets/mpyq-test.SC2Replay"
+    ))
+}
+
+#[test]
+fn an_archive_cut_inside_its_tables_is_incomplete_data() {
+    // A replay cut short (an interrupted download) points its tables past its end.
+    let file_contents = mpyq_test_replay();
+    let (_input, mpq) = parser::parse(&file_contents).unwrap();
+    let header = &mpq.archive_header;
+    let hash_table = header.hash_table_offset as usize + header.offset;
+    let block_table = header.block_table_offset as usize + header.offset;
+    for len in [
+        hash_table,
+        hash_table + 8,
+        block_table,
+        block_table + 8,
+        file_contents.len() - 1,
+    ] {
+        let truncated = &file_contents[..len];
+        assert!(
+            matches!(
+                parser::parse(truncated),
+                Err(MPQParserError::IncompleteData)
+            ),
+            "cut at {len} of {}",
+            file_contents.len()
+        );
+    }
+}
+
+#[test]
+fn a_file_cut_short_is_incomplete_data() {
+    // The tables are read from the whole archive, the files from a shorter copy of it.
+    let file_contents = mpyq_test_replay();
+    let (_input, mpq) = parser::parse(&file_contents).unwrap();
+    let files = mpq.get_files(&file_contents).unwrap();
+    assert!(files.len() > 5);
+    for (name, _size) in &files {
+        let name = name.as_str();
+        let entry = mpq.get_hash_table_entry(name).unwrap();
+        let block = &mpq.block_table_entries[entry.block_table_index as usize];
+        let start = block.offset as usize + mpq.archive_header.offset;
+        let end = start + block.archived_size as usize;
+        for len in [start, start + 1, end - 1] {
+            assert!(
+                matches!(
+                    mpq.read_mpq_file_sector(name, false, &file_contents[..len]),
+                    Err(MPQParserError::IncompleteData)
+                ),
+                "{name} cut at {len}, its data is {start}..{end}"
+            );
+        }
+        assert!(
+            mpq.read_mpq_file_sector(name, false, &file_contents[..end])
+                .is_ok()
+        );
+    }
+}
+
+#[test]
+fn a_hash_entry_past_the_block_table_is_skipped_or_incomplete_data() {
+    let file_contents = mpyq_test_replay();
+    let (_input, mut mpq) = parser::parse(&file_contents).unwrap();
+    let entry = mpq.get_hash_table_entry("replay.details").unwrap();
+    let missing = mpq.block_table_entries.len() as u32;
+    for hash_entry in &mut mpq.hash_table_entries {
+        if hash_entry.hash_a == entry.hash_a && hash_entry.hash_b == entry.hash_b {
+            hash_entry.block_table_index = missing;
+        }
+    }
+    assert!(matches!(
+        mpq.read_mpq_file_sector("replay.details", false, &file_contents),
+        Err(MPQParserError::IncompleteData)
+    ));
+    let files = mpq.get_files(&file_contents).unwrap();
+    assert!(!files.is_empty());
+    assert!(files.iter().all(|(name, _)| name != "replay.details"));
+}
+
+#[test]
+fn truncated_archives_are_errors_not_panics() {
+    // Every length up to the whole archive, the tables included.
+    let file_contents = mpyq_test_replay();
+    for len in (0..file_contents.len()).step_by(97) {
+        let truncated = &file_contents[..len];
+        if let Ok((_input, mpq)) = parser::parse(truncated) {
+            let _ = mpq.get_files(truncated);
+            let _ = mpq.read_mpq_file_sector("replay.details", false, truncated);
+        }
+    }
+}

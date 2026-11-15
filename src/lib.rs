@@ -6,7 +6,6 @@
 #![warn(missing_docs)]
 pub use error::MPQResult;
 use nom::IResult;
-use nom::bytes::complete::take;
 use nom::number::complete::{i32, u8, u32};
 use parser::MPQHashType;
 use std::collections::HashMap;
@@ -227,7 +226,11 @@ impl MPQ {
     ) -> MPQResult<&'a [u8], Vec<u8>> {
         let res = vec![];
         let hash_entry = self.get_hash_table_entry(filename)?;
-        let block_entry = self.block_table_entries[hash_entry.block_table_index as usize].clone();
+        let block_entry = self
+            .block_table_entries
+            .get(hash_entry.block_table_index as usize)
+            .ok_or(MPQParserError::IncompleteData)?
+            .clone();
         tracing::debug!("block_entry {:?}", block_entry);
         // Read the block
         if block_entry.flags & MPQ_FILE_EXISTS == 0 {
@@ -239,8 +242,9 @@ impl MPQ {
             return Ok((orig_input, res));
         }
         let offset = block_entry.offset as usize + self.archive_header.offset;
-        let (tail, file_data) =
-            dbg_dmp(take(block_entry.archived_size), "file_data")(&orig_input[offset..])?;
+        let archived_size = block_entry.archived_size as usize;
+        let file_data = parser::bytes_at(orig_input, offset, archived_size)?;
+        let tail = &orig_input[offset + archived_size..];
 
         tracing::debug!("Block table data: {}", parser::peek_hex(file_data));
         if block_entry.flags & MPQ_FILE_ENCRYPTED != 0 {
@@ -380,7 +384,13 @@ impl MPQ {
                     continue;
                 }
             };
-            let block_entry = &self.block_table_entries[hash_entry.block_table_index as usize];
+            let Some(block_entry) = self
+                .block_table_entries
+                .get(hash_entry.block_table_index as usize)
+            else {
+                tracing::warn!("The block table has no entry for {:?}", filename);
+                continue;
+            };
             tracing::debug!("{} {1:>8} bytes", filename, block_entry.size as usize);
             res.push((filename, block_entry.size as usize));
         }
